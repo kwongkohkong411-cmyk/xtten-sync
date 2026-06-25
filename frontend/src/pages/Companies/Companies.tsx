@@ -16,9 +16,11 @@ import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  SearchOutlined,
 } from "@ant-design/icons";
 import axios from "axios";
+
+import PageHeader from "../../components/PageHeader/PageHeader";
+import SearchBar from "../../components/SearchBar/SearchBar";
 
 const API_URL = "http://localhost:3000";
 
@@ -38,6 +40,7 @@ export default function Companies() {
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+
   const [form] = Form.useForm();
 
   const api = axios.create({
@@ -46,9 +49,11 @@ export default function Companies() {
 
   api.interceptors.request.use((config) => {
     const token = localStorage.getItem("xtten_token");
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
     return config;
   });
 
@@ -87,9 +92,9 @@ export default function Companies() {
     setEditingCompany(null);
     form.resetFields();
     form.setFieldsValue({
+      timezone: "Asia/Shanghai",
       plan: "PRO",
       status: "ACTIVE",
-      timezone: "Asia/Shanghai",
     });
     setModalOpen(true);
   };
@@ -133,6 +138,7 @@ export default function Companies() {
     {
       title: "Company",
       dataIndex: "name",
+      key: "name",
       render: (text: string, record: Company) => (
         <div>
           <strong>{text}</strong>
@@ -143,26 +149,31 @@ export default function Companies() {
     {
       title: "Country",
       dataIndex: "country",
+      key: "country",
     },
     {
       title: "Timezone",
       dataIndex: "timezone",
+      key: "timezone",
     },
     {
       title: "Plan",
       dataIndex: "plan",
+      key: "plan",
       render: (plan: string) => <Tag color="blue">{plan}</Tag>,
     },
     {
       title: "Status",
       dataIndex: "status",
+      key: "status",
       render: (status: string) => (
         <Tag color={status === "ACTIVE" ? "green" : "red"}>{status}</Tag>
       ),
     },
     {
       title: "Action",
-      render: (_: any, record: Company) => (
+      key: "action",
+      render: (_: unknown, record: Company) => (
         <Space>
           <Button icon={<EditOutlined />} onClick={() => openEditModal(record)}>
             Edit
@@ -186,27 +197,31 @@ export default function Companies() {
   ];
 
   return (
-    <Card>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Companies</h2>
-
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-          New Company
-        </Button>
-      </div>
-
-      <Input
-        placeholder="Search company..."
-        prefix={<SearchOutlined />}
-        style={{ width: 320, marginBottom: 16 }}
-        onChange={(e) => handleSearch(e.target.value)}
+    <Card bordered={false}>
+      <PageHeader
+        title="Companies"
+        subtitle="Manage your companies and organizations"
+        action={
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+            New Company
+          </Button>
+        }
       />
+
+      <div style={{ marginBottom: 16 }}>
+        <SearchBar
+          placeholder="Search company..."
+          onChange={handleSearch}
+          width={360}
+        />
+      </div>
 
       <Table
         rowKey="id"
         loading={loading}
         columns={columns}
         dataSource={filteredCompanies}
+        scroll={{ x: 1000 }}
         pagination={{
           pageSize: 10,
           showSizeChanger: true,
@@ -222,19 +237,35 @@ export default function Companies() {
         okText={editingCompany ? "Update" : "Create"}
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="Company Name" rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label="Company Name"
+            rules={[{ required: true, message: "Please enter company name" }]}
+          >
             <Input />
           </Form.Item>
 
-          <Form.Item name="code" label="Company Code" rules={[{ required: true }]}>
+          <Form.Item
+            name="code"
+            label="Company Code"
+            rules={[{ required: true, message: "Please enter company code" }]}
+          >
             <Input disabled={!!editingCompany} />
           </Form.Item>
 
-          <Form.Item name="country" label="Country" rules={[{ required: true }]}>
+          <Form.Item
+            name="country"
+            label="Country"
+            rules={[{ required: true, message: "Please enter country" }]}
+          >
             <Input />
           </Form.Item>
 
-          <Form.Item name="timezone" label="Timezone" rules={[{ required: true }]}>
+          <Form.Item
+            name="timezone"
+            label="Timezone"
+            rules={[{ required: true, message: "Please select timezone" }]}
+          >
             <Select
               options={[
                 { value: "Asia/Shanghai", label: "Asia/Shanghai" },
@@ -246,7 +277,11 @@ export default function Companies() {
             />
           </Form.Item>
 
-          <Form.Item name="plan" label="Plan" rules={[{ required: true }]}>
+          <Form.Item
+            name="plan"
+            label="Plan"
+            rules={[{ required: true, message: "Please select plan" }]}
+          >
             <Select
               options={[
                 { value: "FREE", label: "FREE" },
@@ -256,7 +291,11 @@ export default function Companies() {
             />
           </Form.Item>
 
-          <Form.Item name="status" label="Status" rules={[{ required: true }]}>
+          <Form.Item
+            name="status"
+            label="Status"
+            rules={[{ required: true, message: "Please select status" }]}
+          >
             <Select
               options={[
                 { value: "ACTIVE", label: "ACTIVE" },

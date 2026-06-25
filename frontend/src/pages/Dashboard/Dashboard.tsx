@@ -1,18 +1,13 @@
-import {
-  Card,
-  Col,
-  Row,
-  Statistic,
-  Typography,
-  Table,
-  Tag,
-} from "antd";
+import { Card, Col, Row, Table, Tag, Typography } from "antd";
 import {
   BankOutlined,
   TeamOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
 } from "@ant-design/icons";
+
+import PageHeader from "../../components/PageHeader/PageHeader";
+import StatsCard from "../../components/StatsCard/StatsCard";
 
 const recentActivities = [
   {
@@ -36,18 +31,22 @@ export default function Dashboard() {
     {
       title: "User",
       dataIndex: "user",
+      key: "user",
     },
     {
       title: "Activity",
       dataIndex: "action",
+      key: "action",
     },
     {
       title: "Time",
       dataIndex: "time",
+      key: "time",
     },
     {
       title: "Status",
       dataIndex: "status",
+      key: "status",
       render: (status: string) => (
         <Tag color={status === "success" ? "green" : "blue"}>
           {status.toUpperCase()}
@@ -58,46 +57,35 @@ export default function Dashboard() {
 
   return (
     <div>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Overview of your organization"
+      />
+
       <Row gutter={[20, 20]}>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false}>
-            <Statistic
-              title="Companies"
-              value={1}
-              prefix={<BankOutlined />}
-            />
-          </Card>
+          <StatsCard title="Companies" value={1} prefix={<BankOutlined />} />
         </Col>
 
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false}>
-            <Statistic
-              title="Employees"
-              value={0}
-              prefix={<TeamOutlined />}
-            />
-          </Card>
+          <StatsCard title="Employees" value={0} prefix={<TeamOutlined />} />
         </Col>
 
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false}>
-            <Statistic
-              title="Online Now"
-              value={0}
-              prefix={<CheckCircleOutlined />}
-            />
-          </Card>
+          <StatsCard
+            title="Online Now"
+            value={0}
+            prefix={<CheckCircleOutlined />}
+          />
         </Col>
 
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false}>
-            <Statistic
-              title="Attendance Today"
-              value={0}
-              suffix="%"
-              prefix={<ClockCircleOutlined />}
-            />
-          </Card>
+          <StatsCard
+            title="Attendance Today"
+            value={0}
+            suffix="%"
+            prefix={<ClockCircleOutlined />}
+          />
         </Col>
       </Row>
 
@@ -141,12 +129,9 @@ export default function Dashboard() {
         </Col>
       </Row>
 
-      <Card
-        bordered={false}
-        title="Recent Activities"
-        style={{ marginTop: 20 }}
-      >
+      <Card bordered={false} title="Recent Activities" style={{ marginTop: 20 }}>
         <Table
+          rowKey="key"
           columns={columns}
           dataSource={recentActivities}
           pagination={false}
