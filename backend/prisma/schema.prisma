@@ -4,6 +4,28 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  country   String?
+  timezone  String   @default("Asia/Shanghai")
+  logo      String?
+  plan      String   @default("FREE")
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  departments    Department[]
+  employees      Employee[]
+  users          User[]
+  workGroups     WorkGroup[]
+  shiftTemplates ShiftTemplate[]
+  rosters        Roster[]
+  attendances    Attendance[]
 }
 
 model User {
@@ -16,4 +38,180 @@ model User {
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  companyId    String?
+  company      Company? @relation(fields: [companyId], references: [id])
+  roleId       String?
+  roleRelation Role?    @relation("UserRoleRelation", fields: [roleId], references: [id])
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  status    String   @default("ACTIVE")
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees   Employee[]
+  attendances Attendance[]
+}
+
+model Employee {
+  id         String  @id @default(uuid())
+  employeeNo String?
+  name       String
+  email      String?
+  phone      String?
+  position   String?
+  status     String  @default("ACTIVE")
+
+  companyId    String
+  departmentId String?
+
+  workGroupId  String?
+
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  workGroup    WorkGroup?  @relation(fields: [workGroupId], references: [id], onDelete: SetNull)
+
+  rosters      Roster[]
+  attendances  Attendance[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+
+  users       User[] @relation("UserRoleRelation")
+  permissions RolePermission[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Permission {
+  id        String   @id @default(uuid())
+  module    String
+  action    String
+  label     String?
+
+  createdAt DateTime @default(now())
+
+  roles RolePermission[]
+
+  @@unique([module, action])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model WorkGroup {
+  id          String @id @default(uuid())
+  name        String
+  code        String?
+  description String?
+  color       String?
+  sortOrder   Int @default(0)
+  isActive    Boolean @default(true)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  employees Employee[]
+  rosters   Roster[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ShiftTemplate {
+  id            String @id @default(uuid())
+  name          String
+  code          String?
+
+  shiftType     String
+  startTime     String
+  endTime       String
+
+  breakMinutes  Int @default(60)
+  crossDay      Boolean @default(false)
+
+  lateAfter     Int @default(10)
+  earlyLeave    Int @default(10)
+  overtimeAfter Int @default(0)
+
+  color         String?
+  isActive      Boolean @default(true)
+
+  companyId     String
+  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  rosters       Roster[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Roster {
+  id          String @id @default(uuid())
+
+  date        DateTime
+  month       String
+
+  employeeId  String
+  workGroupId String
+  shiftId     String
+  companyId   String
+
+  status      String @default("ASSIGNED")
+
+  employee    Employee      @relation(fields: [employeeId], references: [id])
+  workGroup   WorkGroup     @relation(fields: [workGroupId], references: [id], onDelete: Cascade)
+  shift       ShiftTemplate @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+}
+
+model Attendance {
+  id           String   @id @default(uuid())
+
+  employeeId   String
+  companyId    String
+  departmentId String?
+
+  checkIn      DateTime?
+  checkOut     DateTime?
+
+  breakStart   DateTime?
+  breakEnd     DateTime?
+
+  date         DateTime
+
+  status       String @default("PENDING")
+  totalHours   Float?
+
+  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
