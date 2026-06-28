@@ -1,9 +1,15 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
-@Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+type ClosableApp = {
+  close: () => Promise<unknown>;
+};
 
+@Injectable()
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor() {
     super({
       log: ['error', 'warn'],
@@ -21,9 +27,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   // 可选：开发时方便调试
-  async enableShutdownHooks(app: any) {
-    process.on('beforeExit', async () => {
-      await app.close();
+  enableShutdownHooks(app: ClosableApp) {
+    process.on('beforeExit', () => {
+      void app.close();
     });
   }
 }
