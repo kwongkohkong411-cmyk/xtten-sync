@@ -119,6 +119,43 @@ type Employee360ProjectionSummary = {
   lastEventLogId?: string | null;
 };
 
+type CreateEmployeeInput = {
+  companyId?: string;
+  employeeNo?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  position?: string;
+  status?: string;
+  hiredAt?: unknown;
+  terminatedAt?: unknown;
+  terminationReason?: string;
+  userId?: string;
+  departmentId?: string;
+};
+
+type UpdateEmployeeInput = {
+  companyId?: string;
+  employeeNo?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  position?: string;
+  status?: string;
+  hiredAt?: unknown;
+  terminatedAt?: unknown;
+  terminationReason?: string;
+  departmentId?: string;
+};
+
+type LifecycleUpdateInput = {
+  status?: string;
+  hiredAt?: unknown;
+  terminatedAt?: unknown;
+  terminationReason?: string;
+  roleId?: string;
+};
+
 type Employee360Response = {
   profile: EmployeeReadModel;
   attendance: Employee360Item<unknown>;
@@ -260,6 +297,55 @@ export class EmployeesService extends BaseRbacService {
 
   private toStringOrNull(input: unknown) {
     return typeof input === 'string' && input.length > 0 ? input : null;
+  }
+
+  private toCreateEmployeeInput(
+    data: Record<string, unknown>,
+  ): CreateEmployeeInput {
+    return {
+      companyId: this.toStringOrUndefined(data.companyId),
+      employeeNo: this.toStringOrUndefined(data.employeeNo),
+      name: this.toStringOrUndefined(data.name),
+      email: this.toStringOrUndefined(data.email),
+      phone: this.toStringOrUndefined(data.phone),
+      position: this.toStringOrUndefined(data.position),
+      status: this.toStringOrUndefined(data.status),
+      hiredAt: data.hiredAt,
+      terminatedAt: data.terminatedAt,
+      terminationReason: this.toStringOrUndefined(data.terminationReason),
+      userId: this.toStringOrUndefined(data.userId),
+      departmentId: this.toStringOrUndefined(data.departmentId),
+    };
+  }
+
+  private toUpdateEmployeeInput(
+    data: Record<string, unknown>,
+  ): UpdateEmployeeInput {
+    return {
+      companyId: this.toStringOrUndefined(data.companyId),
+      employeeNo: this.toStringOrUndefined(data.employeeNo),
+      name: this.toStringOrUndefined(data.name),
+      email: this.toStringOrUndefined(data.email),
+      phone: this.toStringOrUndefined(data.phone),
+      position: this.toStringOrUndefined(data.position),
+      status: this.toStringOrUndefined(data.status),
+      hiredAt: data.hiredAt,
+      terminatedAt: data.terminatedAt,
+      terminationReason: this.toStringOrUndefined(data.terminationReason),
+      departmentId: this.toStringOrUndefined(data.departmentId),
+    };
+  }
+
+  private toLifecycleUpdateInput(
+    data: Record<string, unknown>,
+  ): LifecycleUpdateInput {
+    return {
+      status: this.toStringOrUndefined(data.status),
+      hiredAt: data.hiredAt,
+      terminatedAt: data.terminatedAt,
+      terminationReason: this.toStringOrUndefined(data.terminationReason),
+      roleId: this.toStringOrUndefined(data.roleId),
+    };
   }
 
   private toPage(input: unknown, defaultValue = 1) {
@@ -862,43 +948,44 @@ export class EmployeesService extends BaseRbacService {
   // CREATE (🔥 最终稳定版)
   // =================================================
   async create(data: Record<string, unknown>, actor?: Actor) {
-    const companyId = this.toStringOrUndefined(data.companyId);
+    const input = this.toCreateEmployeeInput(data);
+    const companyId = input.companyId;
     const scopedCompanyId = await this.assertCompanyScope(actor, companyId);
     if (!scopedCompanyId.companyId) {
       throw new BadRequestException('companyId is required');
     }
     const resolvedCompanyId = scopedCompanyId.companyId;
     const normalizedStatus = this.normalizeLifecycleStatus(
-      data.status || 'ACTIVE',
+      input.status || 'ACTIVE',
     );
-    const hiredAt = this.toDateOrNull(data.hiredAt) || new Date();
-    const terminatedAt = this.toDateOrNull(data.terminatedAt);
-    const userId = this.toStringOrUndefined(data.userId);
+    const hiredAt = this.toDateOrNull(input.hiredAt) || new Date();
+    const terminatedAt = this.toDateOrNull(input.terminatedAt);
+    const userId = input.userId;
 
     if (!userId) {
       throw new ForbiddenException('userId is required');
     }
 
     const payload: Prisma.EmployeeUncheckedCreateInput = {
-      employeeNo: this.toStringOrUndefined(data.employeeNo),
-      name: this.toStringOrUndefined(data.name) ?? '',
-      email: this.toStringOrUndefined(data.email),
-      phone: this.toStringOrUndefined(data.phone),
-      position: this.toStringOrUndefined(data.position),
+      employeeNo: input.employeeNo,
+      name: input.name ?? '',
+      email: input.email,
+      phone: input.phone,
+      position: input.position,
       status: normalizedStatus,
       hiredAt,
       terminatedAt:
         normalizedStatus === 'LEFT' ? terminatedAt || new Date() : undefined,
       terminationReason:
         normalizedStatus === 'LEFT'
-          ? this.toStringOrNull(data.terminationReason)
+          ? (input.terminationReason ?? null)
           : undefined,
       companyId: resolvedCompanyId,
       userId,
     };
 
     // ⭐ department（可选）
-    const departmentId = this.toStringOrUndefined(data.departmentId);
+    const departmentId = input.departmentId;
     if (departmentId) {
       payload.departmentId = departmentId;
     }
@@ -961,6 +1048,7 @@ export class EmployeesService extends BaseRbacService {
   // UPDATE (🔥 最终稳定版)
   // =================================================
   async update(id: string, data: Record<string, unknown>, actor?: Actor) {
+    const input = this.toUpdateEmployeeInput(data);
     await this.assertEmployeeInScope(id, actor);
 
     const before = await this.prisma.employee.findUnique({
@@ -979,7 +1067,7 @@ export class EmployeesService extends BaseRbacService {
       throw new NotFoundException('Employee not found');
     }
 
-    const companyId = this.toStringOrUndefined(data.companyId);
+    const companyId = input.companyId;
     let resolvedCompanyId = before.companyId;
     if (companyId) {
       const scopedCompanyId = await this.assertCompanyScope(actor, companyId);
@@ -991,13 +1079,13 @@ export class EmployeesService extends BaseRbacService {
 
     const prevStatus = this.normalizeLifecycleStatus(before.status || 'ACTIVE');
     const nextStatus = this.normalizeLifecycleStatus(
-      data.status ?? before.status ?? 'ACTIVE',
+      input.status ?? before.status ?? 'ACTIVE',
     );
     const hiredAt =
-      this.toDateOrNull(data.hiredAt) ||
+      this.toDateOrNull(input.hiredAt) ||
       before.hiredAt ||
       (nextStatus === 'ACTIVE' ? new Date() : null);
-    const terminatedAtFromInput = this.toDateOrNull(data.terminatedAt);
+    const terminatedAtFromInput = this.toDateOrNull(input.terminatedAt);
     const isRehire = prevStatus === 'LEFT' && nextStatus !== 'LEFT';
     const isTermination = prevStatus !== 'LEFT' && nextStatus === 'LEFT';
     const terminatedAt =
@@ -1006,15 +1094,15 @@ export class EmployeesService extends BaseRbacService {
         : null;
     const terminationReason =
       nextStatus === 'LEFT'
-        ? (data.terminationReason ?? before.terminationReason ?? null)
+        ? (input.terminationReason ?? before.terminationReason ?? null)
         : null;
 
     const payload: Prisma.EmployeeUncheckedUpdateInput = {
-      employeeNo: this.toStringOrUndefined(data.employeeNo),
-      name: this.toStringOrUndefined(data.name),
-      email: this.toStringOrUndefined(data.email),
-      phone: this.toStringOrUndefined(data.phone),
-      position: this.toStringOrUndefined(data.position),
+      employeeNo: input.employeeNo,
+      name: input.name,
+      email: input.email,
+      phone: input.phone,
+      position: input.position,
       status: nextStatus,
       hiredAt,
       terminatedAt,
@@ -1022,7 +1110,7 @@ export class EmployeesService extends BaseRbacService {
       companyId: resolvedCompanyId,
     };
 
-    const departmentId = this.toStringOrUndefined(data.departmentId);
+    const departmentId = input.departmentId;
     if (departmentId) {
       payload.departmentId = departmentId;
     } else {
@@ -1150,6 +1238,7 @@ export class EmployeesService extends BaseRbacService {
     data: Record<string, unknown>,
     actor?: Actor,
   ) {
+    const input = this.toLifecycleUpdateInput(data);
     await this.assertEmployeeInScope(id, actor);
 
     const before = await this.prisma.employee.findUnique({
@@ -1176,13 +1265,13 @@ export class EmployeesService extends BaseRbacService {
 
     const prevStatus = this.normalizeLifecycleStatus(before.status || 'ACTIVE');
     const nextStatus = this.normalizeLifecycleStatus(
-      data.status ?? before.status ?? 'ACTIVE',
+      input.status ?? before.status ?? 'ACTIVE',
     );
     const hiredAt =
-      this.toDateOrNull(data.hiredAt) ||
+      this.toDateOrNull(input.hiredAt) ||
       before.hiredAt ||
       (nextStatus === 'ACTIVE' ? new Date() : null);
-    const terminatedAtInput = this.toDateOrNull(data.terminatedAt);
+    const terminatedAtInput = this.toDateOrNull(input.terminatedAt);
     const isTermination = prevStatus !== 'LEFT' && nextStatus === 'LEFT';
     const isRehire = prevStatus === 'LEFT' && nextStatus !== 'LEFT';
     const terminatedAt =
@@ -1191,7 +1280,7 @@ export class EmployeesService extends BaseRbacService {
         : null;
     const terminationReason =
       nextStatus === 'LEFT'
-        ? (data.terminationReason ?? before.terminationReason ?? null)
+        ? (input.terminationReason ?? before.terminationReason ?? null)
         : null;
 
     const updated = await this.prisma.employee.update({
@@ -1217,73 +1306,85 @@ export class EmployeesService extends BaseRbacService {
     });
 
     if (before.status !== updated.status) {
+      const beforeData: Prisma.InputJsonObject = {
+        status: before.status,
+        hiredAt: before.hiredAt,
+        terminatedAt: before.terminatedAt,
+        terminationReason: before.terminationReason,
+      };
+      const afterData: Prisma.InputJsonObject = {
+        status: updated.status,
+        hiredAt: updated.hiredAt,
+        terminatedAt: updated.terminatedAt,
+        terminationReason: updated.terminationReason,
+      };
+      const meta: Prisma.InputJsonObject = {
+        source: 'employees.service.updateLifecycle',
+      };
+
       await this.eventLogService.emitEmployeeEvent({
         companyId: updated.companyId,
         actorId: actor?.id,
         employeeId: updated.id,
         action: EMPLOYEE_EVENT_ACTIONS.EMPLOYEE_STATUS_CHANGED,
-        beforeData: {
-          status: before.status,
-          hiredAt: before.hiredAt,
-          terminatedAt: before.terminatedAt,
-          terminationReason: before.terminationReason,
-        },
-        afterData: {
-          status: updated.status,
-          hiredAt: updated.hiredAt,
-          terminatedAt: updated.terminatedAt,
-          terminationReason: updated.terminationReason,
-        },
-        meta: {
-          source: 'employees.service.updateLifecycle',
-        },
+        beforeData,
+        afterData,
+        meta,
       });
     }
 
     if (isTermination) {
+      const beforeData: Prisma.InputJsonObject = {
+        status: before.status,
+        terminatedAt: before.terminatedAt,
+        terminationReason: before.terminationReason,
+      };
+      const afterData: Prisma.InputJsonObject = {
+        status: updated.status,
+        terminatedAt: updated.terminatedAt,
+        terminationReason: updated.terminationReason,
+      };
+      const meta: Prisma.InputJsonObject = {
+        source: 'employees.service.updateLifecycle',
+        reason: updated.terminationReason,
+      };
+
       await this.eventLogService.emitEmployeeEvent({
         companyId: updated.companyId,
         actorId: actor?.id,
         employeeId: updated.id,
         action: EMPLOYEE_EVENT_ACTIONS.EMPLOYEE_TERMINATED,
-        beforeData: {
-          status: before.status,
-          terminatedAt: before.terminatedAt,
-          terminationReason: before.terminationReason,
-        },
-        afterData: {
-          status: updated.status,
-          terminatedAt: updated.terminatedAt,
-          terminationReason: updated.terminationReason,
-        },
-        meta: {
-          source: 'employees.service.updateLifecycle',
-          reason: updated.terminationReason,
-        },
+        beforeData,
+        afterData,
+        meta,
       });
     }
 
     if (isRehire) {
+      const beforeData: Prisma.InputJsonObject = {
+        status: before.status,
+        hiredAt: before.hiredAt,
+      };
+      const afterData: Prisma.InputJsonObject = {
+        status: updated.status,
+        hiredAt: updated.hiredAt,
+      };
+      const meta: Prisma.InputJsonObject = {
+        source: 'employees.service.updateLifecycle',
+      };
+
       await this.eventLogService.emitEmployeeEvent({
         companyId: updated.companyId,
         actorId: actor?.id,
         employeeId: updated.id,
         action: EMPLOYEE_EVENT_ACTIONS.EMPLOYEE_REHIRED,
-        beforeData: {
-          status: before.status,
-          hiredAt: before.hiredAt,
-        },
-        afterData: {
-          status: updated.status,
-          hiredAt: updated.hiredAt,
-        },
-        meta: {
-          source: 'employees.service.updateLifecycle',
-        },
+        beforeData,
+        afterData,
+        meta,
       });
     }
 
-    const roleId = this.toStringOrUndefined(data.roleId);
+    const roleId = input.roleId;
     if (roleId && before.user?.id) {
       await this.assertRoleAssignmentAllowed(roleId, actor);
 
