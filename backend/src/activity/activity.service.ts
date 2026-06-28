@@ -1,8 +1,18 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { extname, join, normalize, resolve } from 'node:path';
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { Prisma } from '@prisma/client';
 import { Observable, Subject } from 'rxjs';
 import { BaseRbacService } from '../auth/base-rbac.service';
 import { Actor, RbacCoreService } from '../auth/rbac-core.service';
@@ -49,24 +59,47 @@ type ActivityScreenshotUploadPayload = {
 };
 
 @Injectable()
-export class ActivityService extends BaseRbacService implements OnModuleInit, OnModuleDestroy {
+export class ActivityService
+  extends BaseRbacService
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly eventStream = new Subject<Record<string, unknown>>();
   private readonly logger = new Logger(ActivityService.name);
   private cleanupTimer: NodeJS.Timeout | null = null;
   private cleanupKickoffTimer: NodeJS.Timeout | null = null;
   private r2Client: S3Client | null = null;
 
-  constructor(
-    prisma: PrismaService,
-    rbacCore: RbacCoreService,
-  ) {
+  constructor(prisma: PrismaService, rbacCore: RbacCoreService) {
     super(prisma, rbacCore);
+  }
+
+  private errorMessage(err: unknown) {
+    if (err instanceof Error) return err.message;
+    if (typeof err === 'string') return err;
+    return 'unknown error';
+  }
+
+  private toText(input: unknown, fallback = '') {
+    if (typeof input === 'string') return input;
+    if (typeof input === 'number' || typeof input === 'boolean') {
+      return String(input);
+    }
+    return fallback;
+  }
+
+  private toRecord(input: unknown): Record<string, unknown> {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return {};
+    }
+    return input as Record<string, unknown>;
   }
 
   onModuleInit() {
     this.cleanupKickoffTimer = setTimeout(() => {
       this.cleanupExpiredScreenshots().catch((err) => {
-        this.logger.warn(`initial screenshot cleanup failed: ${String(err?.message || err)}`);
+        this.logger.warn(
+          `initial screenshot cleanup failed: ${this.errorMessage(err)}`,
+        );
       });
     }, 15_000);
 
@@ -106,10 +139,14 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
   }
 
   private encodeScreenshotCursor(createdAt: Date, id: string) {
-    return Buffer.from(`${createdAt.toISOString()}|${id}`, 'utf8').toString('base64url');
+    return Buffer.from(`${createdAt.toISOString()}|${id}`, 'utf8').toString(
+      'base64url',
+    );
   }
 
-  private decodeScreenshotCursor(cursor?: string): { createdAt: Date; id: string } | null {
+  private decodeScreenshotCursor(
+    cursor?: string,
+  ): { createdAt: Date; id: string } | null {
     if (!cursor) return null;
     try {
       const raw = Buffer.from(String(cursor), 'base64url').toString('utf8');
@@ -125,7 +162,9 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
 
   private resolveLocalScreenshotPath(screenshotUrl: string) {
     if (!String(screenshotUrl || '').startsWith('/uploads/')) return null;
-    const normalizedUrl = normalize(String(screenshotUrl || '').replace(/^\/+/, ''));
+    const normalizedUrl = normalize(
+      String(screenshotUrl || '').replace(/^\/+/, ''),
+    );
     const uploadsRoot = resolve(join(process.cwd(), 'uploads'));
     const absolutePath = resolve(join(process.cwd(), normalizedUrl));
     if (!absolutePath.startsWith(uploadsRoot)) return null;
@@ -162,7 +201,12 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     return String(process.env.CF_R2_BUCKET || '');
   }
 
-  private makeScreenshotObjectKey(companyId: string, employeeId: string, capturedAt: Date, extension: string) {
+  private makeScreenshotObjectKey(
+    companyId: string,
+    employeeId: string,
+    capturedAt: Date,
+    extension: string,
+  ) {
     const yyyy = String(capturedAt.getFullYear());
     const mm = String(capturedAt.getMonth() + 1).padStart(2, '0');
     const dd = String(capturedAt.getDate()).padStart(2, '0');
@@ -201,7 +245,10 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
       }),
     );
 
-    const publicBase = String(process.env.CF_R2_PUBLIC_BASE_URL || '').replace(/\/$/, '');
+    const publicBase = String(process.env.CF_R2_PUBLIC_BASE_URL || '').replace(
+      /\/$/,
+      '',
+    );
     const screenshotUrl = publicBase ? `${publicBase}/${objectKey}` : objectKey;
     return {
       screenshotUrl,
@@ -244,8 +291,16 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     originalName?: string;
     buffer: Buffer;
   }) {
-    const originalExt = extname(String(params.originalName || '')).toLowerCase();
-    const extension = originalExt || (params.mimeType.includes('webp') ? '.webp' : params.mimeType.includes('png') ? '.png' : '.jpg');
+    const originalExt = extname(
+      String(params.originalName || ''),
+    ).toLowerCase();
+    const extension =
+      originalExt ||
+      (params.mimeType.includes('webp')
+        ? '.webp'
+        : params.mimeType.includes('png')
+          ? '.png'
+          : '.jpg');
 
     if (this.isR2Enabled()) {
       try {
@@ -259,7 +314,9 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
         });
         if (r2) return r2;
       } catch (err) {
-        this.logger.warn(`R2 upload failed, fallback to local storage: ${String(err?.message || err)}`);
+        this.logger.warn(
+          `R2 upload failed, fallback to local storage: ${this.errorMessage(err)}`,
+        );
       }
     }
 
@@ -296,14 +353,20 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     requestedCompanyId: string | undefined,
     payload: ActivityScreenshotUploadPayload,
   ) {
-    const { companyId } = await this.assertCompanyScope(actor, requestedCompanyId, true);
+    const { companyId } = await this.assertCompanyScope(
+      actor,
+      requestedCompanyId,
+      true,
+    );
 
     const employeeId = String(payload.employeeId || '').trim();
     if (!employeeId) {
       throw new Error('employeeId is required');
     }
 
-    const capturedAt = payload.capturedAt ? new Date(payload.capturedAt) : new Date();
+    const capturedAt = payload.capturedAt
+      ? new Date(payload.capturedAt)
+      : new Date();
     if (Number.isNaN(capturedAt.getTime())) {
       throw new Error('capturedAt is invalid');
     }
@@ -314,11 +377,15 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
       employeeId,
       capturedAt,
       mimeType,
-      originalName: mimeType.includes('webp') ? 'screenshot.webp' : 'screenshot.jpg',
+      originalName: mimeType.includes('webp')
+        ? 'screenshot.webp'
+        : 'screenshot.jpg',
       buffer,
     });
 
-    const sha256 = String(payload.sha256 || createHash('sha256').update(buffer).digest('hex'));
+    const sha256 = String(
+      payload.sha256 || createHash('sha256').update(buffer).digest('hex'),
+    );
     const perceptualHash = String(payload.perceptualHash || payload.hash || '');
     const hash = String(payload.hash || perceptualHash || sha256);
 
@@ -328,7 +395,9 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
         employeeId,
         teamId: payload.teamId ? String(payload.teamId) : null,
         deviceId: payload.deviceId ? String(payload.deviceId) : null,
-        agentVersion: payload.agentVersion ? String(payload.agentVersion) : null,
+        agentVersion: payload.agentVersion
+          ? String(payload.agentVersion)
+          : null,
         captureSource: String(payload.captureSource || 'SCREENSHOT'),
         capturedAt,
         appName: payload.appName || null,
@@ -345,7 +414,7 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
         sizeBytes: buffer.length,
         width: payload.width ? Number(payload.width) : null,
         height: payload.height ? Number(payload.height) : null,
-        metadata: (payload.metadata || {}) as any,
+        metadata: (payload.metadata || {}) as Prisma.InputJsonObject,
       },
       select: {
         id: true,
@@ -375,7 +444,11 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     };
   }
 
-  private async deleteScreenshotObject(params: { screenshotUrl?: string; objectKey?: string; storageProvider?: string }) {
+  private async deleteScreenshotObject(params: {
+    screenshotUrl?: string;
+    objectKey?: string;
+    storageProvider?: string;
+  }) {
     const provider = String(params.storageProvider || '');
     const objectKey = String(params.objectKey || '');
     const screenshotUrl = String(params.screenshotUrl || '');
@@ -413,21 +486,31 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
 
     setTimeout(() => {
       this.cleanupExpiredScreenshots().catch((err) => {
-        this.logger.warn(`midnight screenshot cleanup failed: ${String(err?.message || err)}`);
+        this.logger.warn(
+          `midnight screenshot cleanup failed: ${this.errorMessage(err)}`,
+        );
       });
 
       const dailyMs = 24 * 60 * 60 * 1000;
       this.cleanupTimer = setInterval(() => {
         this.cleanupExpiredScreenshots().catch((err) => {
-          this.logger.warn(`daily screenshot cleanup failed: ${String(err?.message || err)}`);
+          this.logger.warn(
+            `daily screenshot cleanup failed: ${this.errorMessage(err)}`,
+          );
         });
       }, dailyMs);
     }, firstDelay);
   }
 
   private async cleanupExpiredScreenshots() {
-    const retentionDays = Math.max(1, Number(process.env.SCREENSHOT_RETENTION_DAYS || 30));
-    const batchSize = Math.max(50, Number(process.env.SCREENSHOT_CLEANUP_BATCH_SIZE || 500));
+    const retentionDays = Math.max(
+      1,
+      Number(process.env.SCREENSHOT_RETENTION_DAYS || 30),
+    );
+    const batchSize = Math.max(
+      50,
+      Number(process.env.SCREENSHOT_CLEANUP_BATCH_SIZE || 500),
+    );
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
 
     let removedRecords = 0;
@@ -504,11 +587,14 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
 
       const deletableAuditIds: string[] = [];
       for (const row of rows) {
-        const data = (row.afterData || {}) as Record<string, unknown>;
-        const metadata = (data.metadata || {}) as Record<string, unknown>;
-        const screenshotUrl = String(data.screenshotUrl || '');
-        const objectKey = String(metadata.objectKey || data.objectKey || '');
-        const storageProvider = String(metadata.storageProvider || data.storageProvider || 'local');
+        const data = this.toRecord(row.afterData);
+        const metadata = this.toRecord(data.metadata);
+        const screenshotUrl = this.toText(data.screenshotUrl);
+        const objectKey = this.toText(metadata.objectKey || data.objectKey);
+        const storageProvider = this.toText(
+          metadata.storageProvider || data.storageProvider,
+          'local',
+        );
 
         const removed = await this.deleteScreenshotObject({
           screenshotUrl,
@@ -542,8 +628,17 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     }
   }
 
-  private async ingestEvent(actor: Actor | undefined, requestedCompanyId: string | undefined, action: string, payload: IngestPayload) {
-    const { companyId } = await this.assertCompanyScope(actor, requestedCompanyId, true);
+  private async ingestEvent(
+    actor: Actor | undefined,
+    requestedCompanyId: string | undefined,
+    action: string,
+    payload: IngestPayload,
+  ) {
+    const { companyId } = await this.assertCompanyScope(
+      actor,
+      requestedCompanyId,
+      true,
+    );
 
     const log = await this.prisma.tenantAuditLog.create({
       data: {
@@ -568,12 +663,14 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
           isAfk: Boolean(payload.isAfk || false),
           screenshotUrl: payload.screenshotUrl || null,
           screenshotBase64: payload.screenshotBase64 || null,
-          objectKey: String(payload.metadata?.objectKey || ''),
-          storageProvider: String(payload.metadata?.storageProvider || ''),
-          screenshotHash: String(payload.metadata?.dhash || payload.metadata?.phash || ''),
+          objectKey: this.toText(payload.metadata?.objectKey),
+          storageProvider: this.toText(payload.metadata?.storageProvider),
+          screenshotHash: this.toText(
+            payload.metadata?.dhash || payload.metadata?.phash,
+          ),
           capturedAt: payload.capturedAt || new Date().toISOString(),
-          metadata: payload.metadata || {},
-        } as any,
+          metadata: (payload.metadata || {}) as Prisma.InputJsonObject,
+        },
       },
       select: {
         id: true,
@@ -595,69 +692,132 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     return log;
   }
 
-  ingestWindowEvent(actor: Actor | undefined, requestedCompanyId: string | undefined, payload: IngestPayload) {
-    return this.ingestEvent(actor, requestedCompanyId, 'ACTIVITY_WINDOW', payload);
+  ingestWindowEvent(
+    actor: Actor | undefined,
+    requestedCompanyId: string | undefined,
+    payload: IngestPayload,
+  ) {
+    return this.ingestEvent(
+      actor,
+      requestedCompanyId,
+      'ACTIVITY_WINDOW',
+      payload,
+    );
   }
 
-  ingestIdleEvent(actor: Actor | undefined, requestedCompanyId: string | undefined, payload: IngestPayload) {
-    return this.ingestEvent(actor, requestedCompanyId, 'ACTIVITY_IDLE', payload);
+  ingestIdleEvent(
+    actor: Actor | undefined,
+    requestedCompanyId: string | undefined,
+    payload: IngestPayload,
+  ) {
+    return this.ingestEvent(
+      actor,
+      requestedCompanyId,
+      'ACTIVITY_IDLE',
+      payload,
+    );
   }
 
-  ingestScreenshot(actor: Actor | undefined, requestedCompanyId: string | undefined, payload: IngestPayload) {
-    return this.ingestEvent(actor, requestedCompanyId, 'ACTIVITY_SCREENSHOT', payload);
+  ingestScreenshot(
+    actor: Actor | undefined,
+    requestedCompanyId: string | undefined,
+    payload: IngestPayload,
+  ) {
+    return this.ingestEvent(
+      actor,
+      requestedCompanyId,
+      'ACTIVITY_SCREENSHOT',
+      payload,
+    );
   }
 
-  ingestHeartbeat(actor: Actor | undefined, requestedCompanyId: string | undefined, payload: IngestPayload) {
-    return this.ingestEvent(actor, requestedCompanyId, 'ACTIVITY_HEARTBEAT', payload);
+  ingestHeartbeat(
+    actor: Actor | undefined,
+    requestedCompanyId: string | undefined,
+    payload: IngestPayload,
+  ) {
+    return this.ingestEvent(
+      actor,
+      requestedCompanyId,
+      'ACTIVITY_HEARTBEAT',
+      payload,
+    );
   }
 
   ingestScreenshotFile(
     actor: Actor | undefined,
     requestedCompanyId: string | undefined,
     payload: IngestPayload,
-    file: { buffer?: Buffer; mimetype?: string; originalname?: string } | undefined,
+    file:
+      | { buffer?: Buffer; mimetype?: string; originalname?: string }
+      | undefined,
   ) {
-    return this.assertCompanyScope(actor, requestedCompanyId, true).then(async ({ companyId }) => {
-      const employeeId = String(payload.employeeId || actor?.id || 'unknown');
-      const capturedAt = payload.capturedAt ? new Date(payload.capturedAt) : new Date();
+    return this.assertCompanyScope(actor, requestedCompanyId, true).then(
+      async ({ companyId }) => {
+        const employeeId = String(payload.employeeId || actor?.id || 'unknown');
+        const capturedAt = payload.capturedAt
+          ? new Date(payload.capturedAt)
+          : new Date();
 
-      let screenshotUrl = payload.screenshotUrl;
-      let storageProvider = 'none';
-      let objectKey = '';
+        let screenshotUrl = payload.screenshotUrl;
+        let storageProvider = 'none';
+        let objectKey = '';
 
-      if (file?.buffer && file.buffer.length > 0) {
-        const saved = await this.persistScreenshotBinary({
-          companyId: String(companyId),
-          employeeId,
-          capturedAt,
-          mimeType: String(file.mimetype || 'image/jpeg'),
-          originalName: file.originalname,
-          buffer: file.buffer,
-        });
+        if (file?.buffer && file.buffer.length > 0) {
+          const saved = await this.persistScreenshotBinary({
+            companyId: String(companyId),
+            employeeId,
+            capturedAt,
+            mimeType: String(file.mimetype || 'image/jpeg'),
+            originalName: file.originalname,
+            buffer: file.buffer,
+          });
 
-        screenshotUrl = saved.screenshotUrl;
-        storageProvider = saved.storageProvider;
-        objectKey = saved.objectKey;
-      }
+          screenshotUrl = saved.screenshotUrl;
+          storageProvider = saved.storageProvider;
+          objectKey = saved.objectKey;
+        }
 
-      return this.ingestEvent(actor, requestedCompanyId, 'ACTIVITY_SCREENSHOT', {
-      ...payload,
-      screenshotUrl,
-      metadata: {
-        ...(payload.metadata || {}),
-        objectKey,
-        storageProvider,
+        return this.ingestEvent(
+          actor,
+          requestedCompanyId,
+          'ACTIVITY_SCREENSHOT',
+          {
+            ...payload,
+            screenshotUrl,
+            metadata: {
+              ...(payload.metadata || {}),
+              objectKey,
+              storageProvider,
+            },
+          },
+        );
       },
-    });
-    });
+    );
   }
 
-  ingestInputStats(actor: Actor | undefined, requestedCompanyId: string | undefined, payload: IngestPayload) {
-    return this.ingestEvent(actor, requestedCompanyId, 'ACTIVITY_INPUT', payload);
+  ingestInputStats(
+    actor: Actor | undefined,
+    requestedCompanyId: string | undefined,
+    payload: IngestPayload,
+  ) {
+    return this.ingestEvent(
+      actor,
+      requestedCompanyId,
+      'ACTIVITY_INPUT',
+      payload,
+    );
   }
 
-  async getLiveActivity(actor: Actor | undefined, query: { date?: string; companyId?: string; limit?: number }) {
-    const { companyId } = await this.assertCompanyScope(actor, query.companyId, true);
+  async getLiveActivity(
+    actor: Actor | undefined,
+    query: { date?: string; companyId?: string; limit?: number },
+  ) {
+    const { companyId } = await this.assertCompanyScope(
+      actor,
+      query.companyId,
+      true,
+    );
     const { start, end, date } = this.dayRange(query.date);
 
     const rows = await this.prisma.tenantAuditLog.findMany({
@@ -692,8 +852,15 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     };
   }
 
-  async getAppUsage(actor: Actor | undefined, query: { date?: string; companyId?: string }) {
-    const { companyId } = await this.assertCompanyScope(actor, query.companyId, true);
+  async getAppUsage(
+    actor: Actor | undefined,
+    query: { date?: string; companyId?: string },
+  ) {
+    const { companyId } = await this.assertCompanyScope(
+      actor,
+      query.companyId,
+      true,
+    );
     const { start, end, date } = this.dayRange(query.date);
 
     const rows = await this.prisma.tenantAuditLog.findMany({
@@ -711,8 +878,8 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
 
     const usage = new Map<string, number>();
     for (const row of rows) {
-      const data = (row.afterData || {}) as Record<string, unknown>;
-      const appName = String(data.appName || 'Unknown');
+      const data = this.toRecord(row.afterData);
+      const appName = this.toText(data.appName, 'Unknown');
       const duration = Number(data.durationSec || 0);
       usage.set(appName, (usage.get(appName) || 0) + duration);
     }
@@ -728,8 +895,15 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     };
   }
 
-  async getWebsiteTracking(actor: Actor | undefined, query: { date?: string; companyId?: string }) {
-    const { companyId } = await this.assertCompanyScope(actor, query.companyId, true);
+  async getWebsiteTracking(
+    actor: Actor | undefined,
+    query: { date?: string; companyId?: string },
+  ) {
+    const { companyId } = await this.assertCompanyScope(
+      actor,
+      query.companyId,
+      true,
+    );
     const { start, end, date } = this.dayRange(query.date);
 
     const rows = await this.prisma.tenantAuditLog.findMany({
@@ -747,9 +921,9 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
 
     const domainMap = new Map<string, number>();
     for (const row of rows) {
-      const data = (row.afterData || {}) as Record<string, unknown>;
-      const rawUrl = String(data.url || '');
-      let domain = String(data.domain || '');
+      const data = this.toRecord(row.afterData);
+      const rawUrl = this.toText(data.url);
+      let domain = this.toText(data.domain);
       if (!domain && rawUrl) {
         try {
           domain = new URL(rawUrl).hostname;
@@ -770,8 +944,20 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     };
   }
 
-  async getScreenshots(actor: Actor | undefined, query: { date?: string; companyId?: string; limit?: number; cursor?: string }) {
-    const { companyId } = await this.assertCompanyScope(actor, query.companyId, true);
+  async getScreenshots(
+    actor: Actor | undefined,
+    query: {
+      date?: string;
+      companyId?: string;
+      limit?: number;
+      cursor?: string;
+    },
+  ) {
+    const { companyId } = await this.assertCompanyScope(
+      actor,
+      query.companyId,
+      true,
+    );
     const { start, end, date } = this.dayRange(query.date);
     const limit = Math.min(Math.max(Number(query.limit || 60), 1), 120);
     const parsedCursor = this.decodeScreenshotCursor(query.cursor);
@@ -797,7 +983,7 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
           gte: start,
           lte: end,
         },
-        ...(cursorWhere as any),
+        ...cursorWhere,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
@@ -847,24 +1033,32 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
     return {
       date,
       screenshots: currentRows.map((row) => {
-        const data = (row.afterData || {}) as Record<string, unknown>;
+        const data = this.toRecord(row.afterData);
         const employeeId = String(row.entityId || '');
         const employee = employeeMap.get(employeeId);
-        const metadata = (data.metadata || {}) as Record<string, unknown>;
+        const metadata = this.toRecord(data.metadata);
 
-        const keyboardCount = Number(data.keyboardCount || metadata.keyboardCount || 0);
+        const keyboardCount = Number(
+          data.keyboardCount || metadata.keyboardCount || 0,
+        );
         const mouseCount = Number(data.mouseCount || metadata.mouseCount || 0);
         const idleSec = Number(data.idleSec || metadata.idleSec || 0);
 
         return {
           id: row.id,
           employeeId: employeeId || row.entityId,
-          employeeName: employee?.name || String(metadata.employeeName || ''),
-          departmentName: employee?.department?.name || String(metadata.departmentName || ''),
+          employeeName: employee?.name || this.toText(metadata.employeeName),
+          departmentName:
+            employee?.department?.name || this.toText(metadata.departmentName),
           capturedAt: data.capturedAt || row.createdAt,
           screenshotUrl: data.screenshotUrl || null,
           screenshotBase64: data.screenshotBase64 || null,
-          appName: data.appName || metadata.appName || data.processName || metadata.processName || null,
+          appName:
+            data.appName ||
+            metadata.appName ||
+            data.processName ||
+            metadata.processName ||
+            null,
           windowTitle: data.windowTitle || metadata.windowTitle || null,
           keyboardCount,
           mouseCount,
@@ -875,14 +1069,24 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
         };
       }),
       nextCursor: hasMore
-        ? this.encodeScreenshotCursor(currentRows[currentRows.length - 1].createdAt, currentRows[currentRows.length - 1].id)
+        ? this.encodeScreenshotCursor(
+            currentRows[currentRows.length - 1].createdAt,
+            currentRows[currentRows.length - 1].id,
+          )
         : null,
       hasMore,
     };
   }
 
-  async getInputStats(actor: Actor | undefined, query: { date?: string; companyId?: string }) {
-    const { companyId } = await this.assertCompanyScope(actor, query.companyId, true);
+  async getInputStats(
+    actor: Actor | undefined,
+    query: { date?: string; companyId?: string },
+  ) {
+    const { companyId } = await this.assertCompanyScope(
+      actor,
+      query.companyId,
+      true,
+    );
     const { start, end, date } = this.dayRange(query.date);
 
     const rows = await this.prisma.tenantAuditLog.findMany({
@@ -901,13 +1105,19 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
       },
     });
 
-    const byEmployee = new Map<string, { keyboardCount: number; mouseCount: number }>();
+    const byEmployee = new Map<
+      string,
+      { keyboardCount: number; mouseCount: number }
+    >();
     for (const row of rows) {
       const employeeId = row.entityId || 'unknown';
       const data = (row.afterData || {}) as Record<string, unknown>;
       const keyboardCount = Number(data.keyboardCount || 0);
       const mouseCount = Number(data.mouseCount || 0);
-      const current = byEmployee.get(employeeId) || { keyboardCount: 0, mouseCount: 0 };
+      const current = byEmployee.get(employeeId) || {
+        keyboardCount: 0,
+        mouseCount: 0,
+      };
       current.keyboardCount += keyboardCount;
       current.mouseCount += mouseCount;
       byEmployee.set(employeeId, current);
@@ -915,12 +1125,20 @@ export class ActivityService extends BaseRbacService implements OnModuleInit, On
 
     return {
       date,
-      totalKeyboardCount: Array.from(byEmployee.values()).reduce((sum, row) => sum + row.keyboardCount, 0),
-      totalMouseCount: Array.from(byEmployee.values()).reduce((sum, row) => sum + row.mouseCount, 0),
-      employees: Array.from(byEmployee.entries()).map(([employeeId, stats]) => ({
-        employeeId,
-        ...stats,
-      })),
+      totalKeyboardCount: Array.from(byEmployee.values()).reduce(
+        (sum, row) => sum + row.keyboardCount,
+        0,
+      ),
+      totalMouseCount: Array.from(byEmployee.values()).reduce(
+        (sum, row) => sum + row.mouseCount,
+        0,
+      ),
+      employees: Array.from(byEmployee.entries()).map(
+        ([employeeId, stats]) => ({
+          employeeId,
+          ...stats,
+        }),
+      ),
     };
   }
 }

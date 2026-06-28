@@ -1,9 +1,38 @@
-import { Body, Controller, Get, Post, Query, Req, Sse, UploadedFile, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  Sse,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
 import { RequirePermission } from '../auth/permissions.decorator';
+import type { Actor } from '../auth/rbac-core.service';
 import { ActivityService } from './activity.service';
 import { ActivitySessionService } from './activity-session.service';
+
+type RequestWithUser = {
+  user?: Actor;
+};
+
+type IngestPayload = Record<string, unknown>;
+
+type UploadFile = {
+  buffer?: Buffer;
+  mimetype?: string;
+  originalname?: string;
+};
+
+const toPayload = (body: unknown): IngestPayload => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return {};
+  }
+  return body as IngestPayload;
+};
 
 @Controller('activity')
 export class ActivityController {
@@ -15,23 +44,31 @@ export class ActivityController {
   @RequirePermission('activity:view')
   @Get('sessions')
   getDailySessions(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('date') date?: string,
     @Query('companyId') companyId?: string,
     @Query('employeeId') employeeId?: string,
   ) {
-    return this.activitySessionService.getDailySessions(req.user, { date, companyId, employeeId });
+    return this.activitySessionService.getDailySessions(req.user, {
+      date,
+      companyId,
+      employeeId,
+    });
   }
 
   @RequirePermission('activity:view')
   @Get('productivity')
   getProductivitySummary(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('date') date?: string,
     @Query('companyId') companyId?: string,
     @Query('employeeId') employeeId?: string,
   ) {
-    return this.activitySessionService.getProductivitySummary(req.user, { date, companyId, employeeId });
+    return this.activitySessionService.getProductivitySummary(req.user, {
+      date,
+      companyId,
+      employeeId,
+    });
   }
 
   @RequirePermission('activity:view')
@@ -42,14 +79,17 @@ export class ActivityController {
 
   @RequirePermission('activity:view')
   @Sse('stream')
-  streamTimeline(@Req() req: any, @Query('companyId') companyId?: string) {
+  streamTimeline(
+    @Req() req: RequestWithUser,
+    @Query('companyId') companyId?: string,
+  ) {
     return this.activitySessionService.streamTimeline(req.user, { companyId });
   }
 
   @RequirePermission('activity:view')
   @Get('live')
   getLiveActivity(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('date') date?: string,
     @Query('companyId') companyId?: string,
     @Query('limit') limit?: string,
@@ -64,7 +104,7 @@ export class ActivityController {
   @RequirePermission('activity:view')
   @Get('app-usage')
   getAppUsage(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('date') date?: string,
     @Query('companyId') companyId?: string,
   ) {
@@ -74,17 +114,20 @@ export class ActivityController {
   @RequirePermission('activity:view')
   @Get('website-tracking')
   getWebsiteTracking(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('date') date?: string,
     @Query('companyId') companyId?: string,
   ) {
-    return this.activityService.getWebsiteTracking(req.user, { date, companyId });
+    return this.activityService.getWebsiteTracking(req.user, {
+      date,
+      companyId,
+    });
   }
 
   @RequirePermission('activity:view')
   @Get('screenshots')
   getScreenshots(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('date') date?: string,
     @Query('companyId') companyId?: string,
     @Query('limit') limit?: string,
@@ -101,7 +144,7 @@ export class ActivityController {
   @RequirePermission('activity:view')
   @Get('input-stats')
   getInputStats(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('date') date?: string,
     @Query('companyId') companyId?: string,
   ) {
@@ -111,50 +154,62 @@ export class ActivityController {
   @RequirePermission('activity:manage')
   @Post('ingest/heartbeat')
   ingestHeartbeat(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('companyId') companyId: string | undefined,
-    @Body() body: any,
+    @Body() body: unknown,
   ) {
-    return this.activityService.ingestHeartbeat(req.user, companyId, body || {});
+    return this.activityService.ingestHeartbeat(
+      req.user,
+      companyId,
+      toPayload(body),
+    );
   }
 
   @RequirePermission('activity:manage')
   @Post('ingest/window-event')
   ingestWindowEvent(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('companyId') companyId: string | undefined,
-    @Body() body: any,
+    @Body() body: unknown,
   ) {
-    return this.activityService.ingestWindowEvent(req.user, companyId, body || {});
+    return this.activityService.ingestWindowEvent(
+      req.user,
+      companyId,
+      toPayload(body),
+    );
   }
 
   @RequirePermission('activity:manage')
   @Post('ingest/idle-event')
   ingestIdleEvent(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('companyId') companyId: string | undefined,
-    @Body() body: any,
+    @Body() body: unknown,
   ) {
-    return this.activityService.ingestIdleEvent(req.user, companyId, body || {});
+    return this.activityService.ingestIdleEvent(
+      req.user,
+      companyId,
+      toPayload(body),
+    );
   }
 
   @RequirePermission('activity:manage')
   @Post('ingest/screenshot-file')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: memoryStorage(),
       limits: {
         fileSize: 8 * 1024 * 1024,
       },
     }),
   )
   ingestScreenshotFile(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('companyId') companyId: string | undefined,
-    @Body() body: any,
-    @UploadedFile() file: any,
+    @Body() body: unknown,
+    @UploadedFile() file: UploadFile | undefined,
   ) {
-    let metadata = body?.metadata;
+    const payload = toPayload(body);
+    let metadata: unknown = payload.metadata;
     if (typeof metadata === 'string') {
       try {
         metadata = JSON.parse(metadata);
@@ -163,12 +218,14 @@ export class ActivityController {
       }
     }
 
+    const normalizedMetadata = toPayload(metadata);
+
     return this.activityService.ingestScreenshotFile(
       req.user,
       companyId,
       {
-        ...(body || {}),
-        metadata: metadata || {},
+        ...payload,
+        metadata: normalizedMetadata,
       },
       file,
     );
@@ -177,30 +234,42 @@ export class ActivityController {
   @RequirePermission('activity:manage')
   @Post('ingest/screenshot')
   ingestScreenshot(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('companyId') companyId: string | undefined,
-    @Body() body: any,
+    @Body() body: unknown,
   ) {
-    return this.activityService.ingestScreenshot(req.user, companyId, body || {});
+    return this.activityService.ingestScreenshot(
+      req.user,
+      companyId,
+      toPayload(body),
+    );
   }
 
   @RequirePermission('activity:manage')
   @Post('screenshots')
   uploadActivityScreenshot(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('companyId') companyId: string | undefined,
-    @Body() body: any,
+    @Body() body: unknown,
   ) {
-    return this.activityService.uploadActivityScreenshot(req.user, companyId, body || {});
+    return this.activityService.uploadActivityScreenshot(
+      req.user,
+      companyId,
+      toPayload(body),
+    );
   }
 
   @RequirePermission('activity:manage')
   @Post('ingest/input-stats')
   ingestInputStats(
-    @Req() req: any,
+    @Req() req: RequestWithUser,
     @Query('companyId') companyId: string | undefined,
-    @Body() body: any,
+    @Body() body: unknown,
   ) {
-    return this.activityService.ingestInputStats(req.user, companyId, body || {});
+    return this.activityService.ingestInputStats(
+      req.user,
+      companyId,
+      toPayload(body),
+    );
   }
 }
