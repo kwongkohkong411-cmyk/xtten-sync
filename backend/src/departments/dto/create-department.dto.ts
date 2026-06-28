@@ -12,5 +12,9 @@ export class CreateDepartmentDto {
 
   @IsOptional()
   @IsString()
+  managerId?: string;
+
+  @IsOptional()
+  @IsString()
   status?: string;
 }

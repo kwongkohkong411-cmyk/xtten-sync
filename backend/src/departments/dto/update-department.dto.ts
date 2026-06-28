@@ -15,5 +15,9 @@ export class UpdateDepartmentDto {
 
   @IsOptional()
   @IsString()
+  managerId?: string;
+
+  @IsOptional()
+  @IsString()
   status?: string;
 }
