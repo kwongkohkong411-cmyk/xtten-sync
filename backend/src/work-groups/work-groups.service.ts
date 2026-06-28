@@ -1,6 +1,19 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+type WorkGroupCreateInput = {
+  name: string;
+  code?: string | null;
+  description?: string | null;
+  color?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+  companyId: string;
+  departmentId?: string | null;
+};
+
+type WorkGroupUpdateInput = Partial<WorkGroupCreateInput>;
+
 @Injectable()
 export class WorkGroupsService {
   constructor(private prisma: PrismaService) {}
@@ -13,6 +26,12 @@ export class WorkGroupsService {
             id: true,
             name: true,
             code: true,
+          },
+        },
+        department: {
+          select: {
+            id: true,
+            name: true,
           },
         },
         _count: {
@@ -43,6 +62,12 @@ export class WorkGroupsService {
             code: true,
           },
         },
+        department: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         employees: {
           select: {
             id: true,
@@ -63,7 +88,7 @@ export class WorkGroupsService {
     return workGroup;
   }
 
-  async create(body: any) {
+  async create(body: WorkGroupCreateInput) {
     return this.prisma.workGroup.create({
       data: {
         name: body.name,
@@ -73,11 +98,12 @@ export class WorkGroupsService {
         sortOrder: body.sortOrder ?? 0,
         isActive: body.isActive ?? true,
         companyId: body.companyId,
+        departmentId: body.departmentId || null,
       },
     });
   }
 
-  async update(id: string, body: any) {
+  async update(id: string, body: WorkGroupUpdateInput) {
     await this.findOne(id);
 
     return this.prisma.workGroup.update({
@@ -90,6 +116,7 @@ export class WorkGroupsService {
         sortOrder: body.sortOrder ?? 0,
         isActive: body.isActive ?? true,
         companyId: body.companyId,
+        departmentId: body.departmentId || null,
       },
     });
   }

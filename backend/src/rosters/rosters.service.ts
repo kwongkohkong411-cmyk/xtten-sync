@@ -1,57 +1,41 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+type RosterCreateInput = {
+  companyId: string;
+  employeeId: string;
+  workGroupId: string;
+  shiftId: string;
+  month: string;
+  status?: string;
+};
+
+type RosterUpdateInput = {
+  companyId?: string;
+  employeeId?: string;
+  workGroupId?: string;
+  shiftId?: string;
+  month?: string;
+  status?: string;
+};
+
 @Injectable()
 export class RostersService {
   constructor(private prisma: PrismaService) {}
 
   // =========================
-  // GET ALL (SaaS safe)
+  // GET ALL
   // =========================
   async findAll(companyId?: string) {
     return this.prisma.roster.findMany({
       where: companyId ? { companyId } : undefined,
       include: {
-        company: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
-        workGroup: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            color: true,
-          },
-        },
-        shift: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            startTime: true,
-            endTime: true,
-            crossDay: true,
-            color: true,
-            breakMinutes: true,
-          },
-        },
-        employee: {
-          select: {
-            id: true,
-            name: true,
-            employeeNo: true,
-            position: true,
-          },
-        },
+        company: true,
+        workGroup: true,
+        shift: true,
+        employee: true,
       },
-      orderBy: [
-        { month: 'desc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
     });
   }
 
@@ -77,17 +61,33 @@ export class RostersService {
   }
 
   // =========================
-  // CREATE (FIXED + SAFE)
+  // CREATE (FIXED FINAL)
   // =========================
-  async create(body: any) {
+  async create(body: RosterCreateInput) {
+    if (!body.companyId) {
+      throw new Error('companyId is missing');
+    }
+
+    if (!body.employeeId) {
+      throw new Error('employeeId is missing');
+    }
+
+    if (!body.workGroupId) {
+      throw new Error('workGroupId is missing');
+    }
+
+    if (!body.shiftId) {
+      throw new Error('shiftId is missing');
+    }
+
     return this.prisma.roster.create({
       data: {
-        date: new Date(body.date),   // ❗必须
-        month: body.month,
+        // ✅ MUST use STRING month (NOT date)
+        month: body.month, // e.g. "2026-07"
 
+        // ✅ relations MUST use IDs ONLY
         companyId: body.companyId,
-
-        employeeId: body.employeeId, // ❗必须
+        employeeId: body.employeeId,
         workGroupId: body.workGroupId,
         shiftId: body.shiftId,
 
@@ -97,23 +97,22 @@ export class RostersService {
   }
 
   // =========================
-  // UPDATE
+  // UPDATE (FIXED FINAL)
   // =========================
-  async update(id: string, body: any) {
+  async update(id: string, body: RosterUpdateInput) {
     await this.findOne(id);
 
     return this.prisma.roster.update({
       where: { id },
       data: {
-        date: body.date ? new Date(body.date) : undefined,
-        month: body.month,
+        month: body.month ?? undefined,
 
-        companyId: body.companyId,
-        employeeId: body.employeeId,
-        workGroupId: body.workGroupId,
-        shiftId: body.shiftId,
+        companyId: body.companyId ?? undefined,
+        employeeId: body.employeeId ?? undefined,
+        workGroupId: body.workGroupId ?? undefined,
+        shiftId: body.shiftId ?? undefined,
 
-        status: body.status,
+        status: body.status ?? undefined,
       },
     });
   }

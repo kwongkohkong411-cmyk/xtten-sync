@@ -1,21 +1,73 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+
+type ShiftTemplateCreateInput = {
+  companyId: string;
+  name: string;
+  code?: string | null;
+  shiftType?: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes?: number;
+  lateAfter?: number;
+  earlyLeave?: number;
+  overtimeAfter?: number;
+  crossDay?: boolean;
+  color?: string;
+  isActive?: boolean;
+};
+
+type ShiftTemplateUpdateInput = Partial<ShiftTemplateCreateInput>;
 
 @Injectable()
 export class ShiftTemplatesService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(companyId: string) {
+  async create(dto: ShiftTemplateCreateInput) {
+    if (!dto.companyId) {
+      throw new BadRequestException('companyId is required');
+    }
+
+    if (!dto.name) {
+      throw new BadRequestException('name is required');
+    }
+
+    return this.prisma.shiftTemplate.create({
+      data: {
+        companyId: dto.companyId,
+        name: dto.name,
+        code: dto.code,
+
+        shiftType: dto.shiftType ?? 'NORMAL',
+
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+
+        breakMinutes: dto.breakMinutes ?? 60,
+        lateAfter: dto.lateAfter ?? 10,
+        earlyLeave: dto.earlyLeave ?? 10,
+        overtimeAfter: dto.overtimeAfter ?? 0,
+
+        crossDay: dto.crossDay ?? false,
+        color: dto.color ?? '#722ed1',
+        isActive: dto.isActive ?? true,
+      },
+    });
+  }
+
+  async update(id: string, dto: ShiftTemplateUpdateInput) {
+    return this.prisma.shiftTemplate.update({
+      where: { id },
+      data: {
+        ...dto,
+      },
+    });
+  }
+
+  async findAll() {
     return this.prisma.shiftTemplate.findMany({
-      where: { companyId },
       include: {
-        company: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
+        company: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -23,85 +75,7 @@ export class ShiftTemplatesService {
     });
   }
 
-  async findOne(id: string) {
-    const shift = await this.prisma.shiftTemplate.findUnique({
-      where: { id },
-      include: {
-        company: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
-      },
-    });
-
-    if (!shift) {
-      throw new NotFoundException('Shift template not found');
-    }
-
-    return shift;
-  }
-
-  async create(body: any) {
-    return this.prisma.shiftTemplate.create({
-      data: {
-        name: body.name,
-        code: body.code || null,
-
-        shiftType: body.shiftType, // ✔ 必须
-
-        startTime: body.startTime,
-        endTime: body.endTime,
-
-        breakMinutes: Number(body.breakMinutes ?? 60),
-        crossDay: body.crossDay ?? false,
-
-        lateAfter: Number(body.lateAfter ?? 10),
-        earlyLeave: Number(body.earlyLeave ?? 10),
-        overtimeAfter: Number(body.overtimeAfter ?? 0),
-
-        color: body.color || null,
-        isActive: body.isActive ?? true,
-
-        companyId: body.companyId,
-      },
-    });
-  }
-
-  async update(id: string, body: any) {
-    await this.findOne(id);
-
-    return this.prisma.shiftTemplate.update({
-      where: { id },
-      data: {
-        name: body.name,
-        code: body.code || null,
-
-        shiftType: body.shiftType,
-
-        startTime: body.startTime,
-        endTime: body.endTime,
-
-        breakMinutes: Number(body.breakMinutes ?? 60),
-        crossDay: body.crossDay ?? false,
-
-        lateAfter: Number(body.lateAfter ?? 10),
-        earlyLeave: Number(body.earlyLeave ?? 10),
-        overtimeAfter: Number(body.overtimeAfter ?? 0),
-
-        color: body.color || null,
-        isActive: body.isActive ?? true,
-
-        // ❌ 不允许修改 companyId（关键修复）
-      },
-    });
-  }
-
   async remove(id: string) {
-    await this.findOne(id);
-
     return this.prisma.shiftTemplate.delete({
       where: { id },
     });
