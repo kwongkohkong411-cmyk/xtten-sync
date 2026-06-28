@@ -1,0 +1,434 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button, Card, DatePicker, Empty, Select, Space, Table, Tabs, Tag, Typography, message } from "antd";
+import { CoffeeOutlined, LoginOutlined, LogoutOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
+import { breakIn, breakOut, checkIn, checkOut, getAttendanceEvents } from "../../api/attendance";
+import { getRosters } from "../../api/rosters";
+
+const { Text } = Typography;
+const { RangePicker } = DatePicker;
+
+type AttendanceEvent = {
+  id: string;
+  employeeId: string;
+  workDate?: string;
+  status?: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  totalHours?: number | null;
+  totalHoursDecimal?: number | null;
+  anomaly?: string;
+  anomalyList?: string[];
+  timeline?: Array<{ type: string; at: string }>;
+  employee?: { id: string; name?: string };
+  shift?: { id: string; name?: string };
+};
+
+type RosterRecord = {
+  employeeId?: string;
+  month?: string;
+  shift?: {
+    name?: string;
+    startTime?: string;
+    endTime?: string;
+    crossDay?: boolean;
+    lateAfter?: number;
+    earlyLeave?: number;
+  };
+  workGroup?: { name?: string };
+};
+
+type ApiError = {
+  response?: { data?: { message?: string } };
+  message?: string;
+};
+
+function toDateTime(v?: string | null) {
+  return v ? dayjs(v).format("YYYY-MM-DD HH:mm:ss") : "-";
+}
+
+function toHours(v?: number | null) {
+  const n = Number(v ?? 0);
+  return n > 0 ? n.toFixed(2) : "0.00";
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === "object" && error) {
+    const typedError = error as ApiError;
+    return typedError.response?.data?.message || typedError.message || fallback;
+  }
+
+  return fallback;
+}
+
+export default function Attendance() {
+  const currentEmployeeId = localStorage.getItem("employee_id") || "";
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [events, setEvents] = useState<AttendanceEvent[]>([]);
+  const [rosters, setRosters] = useState<RosterRecord[]>([]);
+  const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(() => [dayjs().startOf("month"), dayjs().endOf("day")]);
+  const [employeeFilter, setEmployeeFilter] = useState<string | undefined>(undefined);
+  const [scenarioEmployeeId, setScenarioEmployeeId] = useState<string | undefined>(() => currentEmployeeId || undefined);
+  const [scenarioDate, setScenarioDate] = useState(dayjs());
+
+  const fetchEvents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const attendanceRes = await getAttendanceEvents({
+        startDate: range[0].startOf("day").toISOString(),
+        endDate: range[1].endOf("day").toISOString(),
+      });
+      setEvents(Array.isArray(attendanceRes.data?.events) ? attendanceRes.data.events : []);
+
+      void getRosters()
+        .then((rosterRes) => {
+          setRosters(Array.isArray(rosterRes.data) ? rosterRes.data : []);
+        })
+        .catch(() => {
+          setRosters([]);
+        });
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "Failed to load attendance"));
+      setEvents([]);
+      setRosters([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [range]);
+
+  const rangeStart = range[0].valueOf();
+  const rangeEnd = range[1].valueOf();
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      void fetchEvents();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [fetchEvents, rangeEnd, rangeStart]);
+
+  const selfEvents = useMemo(() => events.filter((e) => e.employeeId === currentEmployeeId), [events, currentEmployeeId]);
+
+  const todaySelfRecord = useMemo(() => {
+    const today = dayjs().format("YYYY-MM-DD");
+    return selfEvents
+      .filter((e) => {
+        const key = dayjs(e.workDate || e.checkIn || e.checkOut).format("YYYY-MM-DD");
+        return key === today;
+      })
+      .sort((a, b) => dayjs(b.checkIn || 0).valueOf() - dayjs(a.checkIn || 0).valueOf())[0];
+  }, [selfEvents]);
+
+  const attendanceState = useMemo(() => {
+    if (todaySelfRecord?.status === "LEAVE") return "ON_LEAVE";
+    if (!todaySelfRecord?.checkIn) return "NOT_CHECKED_IN";
+    if (todaySelfRecord?.checkOut) return "CHECKED_OUT";
+    return todaySelfRecord?.status === "ON_BREAK" ? "ON_BREAK" : "WORKING";
+  }, [todaySelfRecord]);
+
+  const handleAction = async (kind: "checkIn" | "breakOut" | "breakIn" | "checkOut") => {
+    setActionLoading(true);
+    try {
+      if (kind === "checkIn") await checkIn();
+      if (kind === "breakOut") await breakOut();
+      if (kind === "breakIn") await breakIn();
+      if (kind === "checkOut") {
+        if (!todaySelfRecord?.id) {
+          message.warning("No active attendance record");
+          setActionLoading(false);
+          return;
+        }
+        await checkOut(todaySelfRecord.id);
+      }
+      message.success("Action success");
+      await fetchEvents();
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "Action failed"));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const adminRows = useMemo(() => {
+    const rosterMap = new Map<string, { shift: string; team: string }>();
+    for (const roster of rosters) {
+      const month = String(roster?.month || "");
+      if (!month || !roster?.employeeId) continue;
+      rosterMap.set(`${roster.employeeId}:${month}`, {
+        shift: roster?.shift?.name || "-",
+        team: roster?.workGroup?.name || "-",
+      });
+    }
+
+    const rows = events.map((e) => {
+      const worked = Number(e.totalHoursDecimal ?? e.totalHours ?? 0);
+      const workMonth = dayjs(e.workDate || e.checkIn || e.checkOut || new Date()).format("YYYY-MM");
+      const rosterInfo = rosterMap.get(`${e.employeeId}:${workMonth}`);
+      return {
+        id: e.id,
+        employeeId: e.employeeId,
+        employee: e.employee?.name || e.employeeId,
+        team: rosterInfo?.team || "-",
+        shift: rosterInfo?.shift || e.shift?.name || "-",
+        checkIn: e.checkIn,
+        checkOut: e.checkOut,
+        worked,
+        status: (e.anomalyList || []).includes("LATE") ? "LATE" : e.status || e.anomaly || "-",
+      };
+    });
+
+    if (!employeeFilter) return rows;
+    return rows.filter((row) => row.employeeId === employeeFilter);
+  }, [events, rosters, employeeFilter]);
+
+  const employeeOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const e of events) {
+      map.set(e.employeeId, e.employee?.name || e.employeeId);
+    }
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [events]);
+
+  const scenarioResult = useMemo(() => {
+    if (!scenarioEmployeeId) return null;
+
+    const targetDate = scenarioDate.format("YYYY-MM-DD");
+    const record = events.find((e) => {
+      const dateKey = dayjs(e.workDate || e.checkIn || e.checkOut || new Date()).format("YYYY-MM-DD");
+      return e.employeeId === scenarioEmployeeId && dateKey === targetDate;
+    });
+    if (!record) return null;
+
+    const month = scenarioDate.format("YYYY-MM");
+    const roster = rosters.find((r) => r?.employeeId === scenarioEmployeeId && String(r?.month || "") === month);
+    const shift = roster?.shift;
+
+    const checkInAt = record.checkIn ? dayjs(record.checkIn) : null;
+    const checkOutAt = record.checkOut ? dayjs(record.checkOut) : null;
+
+    const toShiftDateTime = (base: dayjs.Dayjs, hhmm?: string, addDay?: boolean) => {
+      if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return null;
+      const [h, m] = hhmm.split(":").map(Number);
+      let t = base.hour(h).minute(m).second(0).millisecond(0);
+      if (addDay) t = t.add(1, "day");
+      return t;
+    };
+
+    const scheduledStart = toShiftDateTime(scenarioDate, shift?.startTime);
+    const scheduledEnd = toShiftDateTime(scenarioDate, shift?.endTime, Boolean(shift?.crossDay));
+
+    const lateMinutes =
+      checkInAt && scheduledStart ? Math.max(checkInAt.diff(scheduledStart, "minute"), 0) : 0;
+    const earlyLeaveMinutes =
+      checkOutAt && scheduledEnd ? Math.max(scheduledEnd.diff(checkOutAt, "minute"), 0) : 0;
+
+    const timeline = Array.isArray(record.timeline) ? record.timeline : [];
+    let breakOpenAt: dayjs.Dayjs | null = null;
+    let breakMinutes = 0;
+    for (const item of timeline) {
+      if (item.type === "BREAK_OUT") {
+        breakOpenAt = dayjs(item.at);
+      }
+      if (item.type === "BREAK_IN" && breakOpenAt) {
+        breakMinutes += Math.max(dayjs(item.at).diff(breakOpenAt, "minute"), 0);
+        breakOpenAt = null;
+      }
+    }
+    if (breakOpenAt && checkOutAt) {
+      breakMinutes += Math.max(checkOutAt.diff(breakOpenAt, "minute"), 0);
+    }
+
+    const lateRule = Number(shift?.lateAfter || 0);
+    const earlyRule = Number(shift?.earlyLeave || 0);
+
+    return {
+      employeeName: record.employee?.name || scenarioEmployeeId,
+      shiftName: shift?.name || "-",
+      shiftWindow: shift?.startTime && shift?.endTime ? `${shift.startTime} - ${shift.endTime}${shift?.crossDay ? " (+1)" : ""}` : "-",
+      checkIn: record.checkIn,
+      checkOut: record.checkOut,
+      totalHours: Number(record.totalHoursDecimal ?? record.totalHours ?? 0),
+      breakMinutes,
+      lateMinutes,
+      earlyLeaveMinutes,
+      isLate: lateMinutes > lateRule,
+      isEarlyLeave: earlyLeaveMinutes > earlyRule,
+      status: (record.anomalyList || []).includes("LATE") ? "LATE" : record.status || record.anomaly || "-",
+    };
+  }, [events, rosters, scenarioDate, scenarioEmployeeId]);
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Card>
+        <Space style={{ width: "100%", justifyContent: "space-between" }}>
+          <div>
+            <Text strong style={{ fontSize: 18 }}>Attendance 打卡考勤</Text>
+            <div><Text type="secondary">员工打卡与管理员考勤视图</Text></div>
+          </div>
+          <RangePicker
+            value={range}
+            onChange={(values) => {
+              if (values && values[0] && values[1]) {
+                setRange([values[0], values[1]]);
+              }
+            }}
+          />
+        </Space>
+      </Card>
+
+      <Tabs
+        defaultActiveKey="self"
+        items={[
+          {
+            key: "self",
+            label: "员工自助打卡",
+            children: (
+              <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                <Card title="今日打卡操作">
+                  <Space wrap>
+                    <Button
+                      type="primary"
+                      icon={<LoginOutlined />}
+                      disabled={attendanceState !== "NOT_CHECKED_IN"}
+                      loading={actionLoading}
+                      onClick={() => handleAction("checkIn")}
+                    >
+                      Check In
+                    </Button>
+                    <Button
+                      icon={<CoffeeOutlined />}
+                      disabled={attendanceState !== "WORKING"}
+                      loading={actionLoading}
+                      onClick={() => handleAction("breakOut")}
+                    >
+                      Break Out
+                    </Button>
+                    <Button
+                      icon={<CoffeeOutlined />}
+                      disabled={attendanceState !== "ON_BREAK"}
+                      loading={actionLoading}
+                      onClick={() => handleAction("breakIn")}
+                    >
+                      Break In
+                    </Button>
+                    <Button
+                      danger
+                      icon={<LogoutOutlined />}
+                      disabled={attendanceState !== "WORKING"}
+                      loading={actionLoading}
+                      onClick={() => handleAction("checkOut")}
+                    >
+                      Check Out
+                    </Button>
+                    <Tag color={attendanceState === "ON_LEAVE" ? "gold" : "blue"}>State: {attendanceState}</Tag>
+                  </Space>
+                </Card>
+
+                <Card title="今日记录">
+                  {todaySelfRecord ? (
+                    <Space direction="vertical" size={6}>
+                      <Text>上班: {toDateTime(todaySelfRecord.checkIn)}</Text>
+                      <Text>下班: {toDateTime(todaySelfRecord.checkOut)}</Text>
+                      <Text>实际工时: {toHours(todaySelfRecord.totalHoursDecimal ?? todaySelfRecord.totalHours)} 小时</Text>
+                      <Text>状态: {todaySelfRecord.status || todaySelfRecord.anomaly || "-"}</Text>
+                    </Space>
+                  ) : (
+                    <Empty description="Today no attendance record" />
+                  )}
+                </Card>
+              </Space>
+            ),
+          },
+          {
+            key: "admin",
+            label: "管理员/HR 视图",
+            children: (
+              <Card title="员工出勤明细">
+                <Space style={{ marginBottom: 12 }} wrap>
+                  <Select
+                    allowClear
+                    style={{ width: 260 }}
+                    placeholder="筛选员工"
+                    value={employeeFilter}
+                    onChange={setEmployeeFilter}
+                    options={employeeOptions}
+                  />
+                </Space>
+                <Table
+                  rowKey="id"
+                  loading={loading}
+                  dataSource={adminRows}
+                  pagination={{ pageSize: 10 }}
+                  columns={[
+                    { title: "员工", dataIndex: "employee" },
+                    { title: "团队", dataIndex: "team" },
+                    { title: "班次", dataIndex: "shift" },
+                    { title: "上班", dataIndex: "checkIn", render: (v: string) => toDateTime(v) },
+                    { title: "下班", dataIndex: "checkOut", render: (v: string) => toDateTime(v) },
+                    { title: "实际工时", dataIndex: "worked", render: (v: number) => `${toHours(v)} h` },
+                    {
+                      title: "状态",
+                      dataIndex: "status",
+                      render: (v: string) => <Tag color={String(v).includes("LATE") ? "orange" : String(v).includes("ABSENT") ? "red" : "green"}>{v}</Tag>,
+                    },
+                    { title: "操作", render: () => <Button size="small">查看</Button> },
+                  ]}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: "flow-test",
+            label: "全流程测试",
+            children: (
+              <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                <Card title="Night Shift 流程校验">
+                  <Space wrap>
+                    <Tag color="purple">Night Shift 20:00</Tag>
+                    <Tag>Check In</Tag>
+                    <Tag>Break Out</Tag>
+                    <Tag>Break In</Tag>
+                    <Tag>Check Out</Tag>
+                    <Tag color="blue">Report</Tag>
+                  </Space>
+
+                  <Space wrap style={{ marginTop: 12 }}>
+                    <Select
+                      style={{ width: 260 }}
+                      placeholder="选择员工"
+                      value={scenarioEmployeeId}
+                      onChange={setScenarioEmployeeId}
+                      options={employeeOptions}
+                    />
+                    <DatePicker value={scenarioDate} onChange={(v) => setScenarioDate(v || dayjs())} />
+                  </Space>
+                </Card>
+
+                <Card title="校验结果（工时 / 迟到 / 早退 / Break）">
+                  {scenarioResult ? (
+                    <Space direction="vertical" size={8}>
+                      <Text>员工: {scenarioResult.employeeName}</Text>
+                      <Text>班次: {scenarioResult.shiftName} ({scenarioResult.shiftWindow})</Text>
+                      <Text>Check In: {toDateTime(scenarioResult.checkIn)}</Text>
+                      <Text>Check Out: {toDateTime(scenarioResult.checkOut)}</Text>
+                      <Text>工时: {toHours(scenarioResult.totalHours)} 小时</Text>
+                      <Text>Break 时间: {scenarioResult.breakMinutes} 分钟</Text>
+                      <Text>迟到: {scenarioResult.lateMinutes} 分钟 {scenarioResult.isLate ? <Tag color="orange">LATE</Tag> : <Tag color="green">OK</Tag>}</Text>
+                      <Text>早退: {scenarioResult.earlyLeaveMinutes} 分钟 {scenarioResult.isEarlyLeave ? <Tag color="red">EARLY_LEAVE</Tag> : <Tag color="green">OK</Tag>}</Text>
+                      <Text>最终状态: <Tag>{scenarioResult.status}</Tag></Text>
+                    </Space>
+                  ) : (
+                    <Empty description="选定员工/日期暂无可校验打卡数据" />
+                  )}
+                </Card>
+              </Space>
+            ),
+          },
+        ]}
+      />
+    </Space>
+  );
+}

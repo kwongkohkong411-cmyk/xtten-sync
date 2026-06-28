@@ -159,43 +159,24 @@ export class AttendanceService {
     return end;
   }
 
-  private async getTimelineForAttendance(record: {
-    id: string;
-    employeeId: string;
-    companyId: string;
-    date: Date;
-    checkIn: Date | null;
-    checkOut: Date | null;
-  }): Promise<AttendanceTimelineEvent[]> {
-    const start = this.normalizeDayStart(record.date);
-    const end = this.getEndOfSameDay(record.date);
+  private getTimelineActions() {
+    return [
+      EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_CHECKED_IN,
+      EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_BREAK_OUT,
+      EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_BREAK_IN,
+      EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_CHECKED_OUT,
+      EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_AUTO_CHECKED_OUT,
+    ] as const;
+  }
 
-    const logs = await this.prisma.tenantAuditLog.findMany({
-      where: {
-        companyId: record.companyId,
-        entityId: record.employeeId,
-        action: {
-          in: [
-            EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_CHECKED_IN,
-            EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_BREAK_OUT,
-            EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_BREAK_IN,
-            EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_CHECKED_OUT,
-            EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_AUTO_CHECKED_OUT,
-          ],
-        },
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    const mapped = logs
-      .filter((log) => {
-        const afterData = (log.afterData || {}) as { attendanceId?: string };
-        return afterData.attendanceId === record.id;
-      })
+  private mapAuditLogsToTimeline(
+    logs: Array<{
+      action: string;
+      createdAt: Date;
+      meta: Prisma.JsonValue | null;
+    }>,
+  ) {
+    return logs
       .map((log) => {
         const type = this.toTimelineType(log.action);
         if (!type) return null;
@@ -213,27 +194,137 @@ export class AttendanceService {
         };
       })
       .filter(Boolean) as AttendanceTimelineEvent[];
+  }
 
-    if (!mapped.length) {
-      const fallback: AttendanceTimelineEvent[] = [];
-      if (record.checkIn) {
-        fallback.push({
-          type: 'CHECK_IN',
-          at: record.checkIn,
-          source: 'attendance.fallback',
-        });
-      }
-      if (record.checkOut) {
-        fallback.push({
-          type: 'CHECK_OUT',
-          at: record.checkOut,
-          source: 'attendance.fallback',
-        });
-      }
-      return fallback;
+  private buildFallbackTimeline(record: {
+    checkIn: Date | null;
+    checkOut: Date | null;
+  }) {
+    const fallback: AttendanceTimelineEvent[] = [];
+    if (record.checkIn) {
+      fallback.push({
+        type: 'CHECK_IN',
+        at: record.checkIn,
+        source: 'attendance.fallback',
+      });
+    }
+    if (record.checkOut) {
+      fallback.push({
+        type: 'CHECK_OUT',
+        at: record.checkOut,
+        source: 'attendance.fallback',
+      });
+    }
+    return fallback;
+  }
+
+  private async getTimelinesForAttendances(
+    records: Array<{
+      id: string;
+      employeeId: string;
+      companyId: string;
+      date: Date;
+      checkIn: Date | null;
+      checkOut: Date | null;
+    }>,
+  ) {
+    const timelineByAttendanceId = new Map<string, AttendanceTimelineEvent[]>();
+
+    if (!records.length) {
+      return timelineByAttendanceId;
     }
 
-    return mapped;
+    const attendanceIds = new Set(records.map((record) => record.id));
+    const employeeIds = Array.from(
+      new Set(records.map((record) => record.employeeId)),
+    );
+    const companyIds = Array.from(
+      new Set(records.map((record) => record.companyId)),
+    );
+
+    let minDate = records[0].date;
+    let maxDate = records[0].date;
+
+    for (const record of records) {
+      if (record.date.getTime() < minDate.getTime()) {
+        minDate = record.date;
+      }
+      if (record.date.getTime() > maxDate.getTime()) {
+        maxDate = record.date;
+      }
+    }
+
+    const logs = await this.prisma.tenantAuditLog.findMany({
+      where: {
+        companyId: { in: companyIds },
+        entityId: { in: employeeIds },
+        action: {
+          in: [...this.getTimelineActions()],
+        },
+        createdAt: {
+          gte: this.normalizeDayStart(minDate),
+          lte: this.getEndOfSameDay(maxDate),
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        action: true,
+        createdAt: true,
+        afterData: true,
+        meta: true,
+      },
+    });
+
+    const logsByAttendanceId = new Map<
+      string,
+      Array<{
+        action: string;
+        createdAt: Date;
+        meta: Prisma.JsonValue | null;
+      }>
+    >();
+
+    for (const log of logs) {
+      const afterData = (log.afterData || {}) as { attendanceId?: string };
+      const attendanceId = afterData.attendanceId;
+      if (!attendanceId || !attendanceIds.has(attendanceId)) {
+        continue;
+      }
+
+      const bucket = logsByAttendanceId.get(attendanceId) || [];
+      bucket.push({
+        action: log.action,
+        createdAt: log.createdAt,
+        meta: log.meta,
+      });
+      logsByAttendanceId.set(attendanceId, bucket);
+    }
+
+    for (const record of records) {
+      const mapped = this.mapAuditLogsToTimeline(
+        logsByAttendanceId.get(record.id) || [],
+      );
+      timelineByAttendanceId.set(
+        record.id,
+        mapped.length ? mapped : this.buildFallbackTimeline(record),
+      );
+    }
+
+    return timelineByAttendanceId;
+  }
+
+  private async getTimelineForAttendance(record: {
+    id: string;
+    employeeId: string;
+    companyId: string;
+    date: Date;
+    checkIn: Date | null;
+    checkOut: Date | null;
+  }): Promise<AttendanceTimelineEvent[]> {
+    const timelineByAttendanceId = await this.getTimelinesForAttendances([
+      record,
+    ]);
+    return timelineByAttendanceId.get(record.id) || [];
   }
 
   private computeWorkedHoursFromTimeline(
@@ -891,66 +982,70 @@ export class AttendanceService {
       }
     }
 
-    const withTimeline = await Promise.all(
-      events.map(async (row) => {
-        if (row.status === 'LEAVE') {
-          return {
-            ...row,
-            anomalyList: ['LEAVE'],
-            timeline: [],
-          };
-        }
-
-        if (row.status === 'HOLIDAY') {
-          return {
-            ...row,
-            anomalyList: ['HOLIDAY'],
-            timeline: [],
-          };
-        }
-
-        const timeline = await this.getTimelineForAttendance({
+    const timelineByAttendanceId = await this.getTimelinesForAttendances(
+      events
+        .filter((row) => row.status !== 'LEAVE' && row.status !== 'HOLIDAY')
+        .map((row) => ({
           id: row.id,
           employeeId: row.employeeId,
           companyId: row.companyId,
           date: row.date,
           checkIn: row.checkIn,
           checkOut: row.checkOut,
-        });
+        })),
+    );
 
-        const anomalyList: string[] = [];
-        if (!row.checkIn) anomalyList.push('MISSING_CHECK_IN');
-        if (!row.checkOut) anomalyList.push('MISSING_CHECK_OUT');
-
-        if (row.checkIn && row.checkOut) {
-          const worked = this.computeWorkedHoursFromTimeline(
-            new Date(row.checkIn),
-            new Date(row.checkOut),
-            timeline,
-          );
-
-          row.totalHours = worked.totalHours;
-          if (worked.unclosedBreak) {
-            anomalyList.push('MISSING_BREAK_IN');
-          }
-        }
-
-        if (row.isLate) {
-          anomalyList.push('LATE');
-        }
-
+    const withTimeline = events.map((row) => {
+      if (row.status === 'LEAVE') {
         return {
           ...row,
-          anomalyList,
-          timeline: timeline.map((t) => ({
-            type: t.type,
-            at: t.at,
-            source: t.source,
-            autoRepaired: t.autoRepaired || false,
-          })),
+          anomalyList: ['LEAVE'],
+          timeline: [],
         };
-      }),
-    );
+      }
+
+      if (row.status === 'HOLIDAY') {
+        return {
+          ...row,
+          anomalyList: ['HOLIDAY'],
+          timeline: [],
+        };
+      }
+
+      const timeline = timelineByAttendanceId.get(row.id) || [];
+
+      const anomalyList: string[] = [];
+      if (!row.checkIn) anomalyList.push('MISSING_CHECK_IN');
+      if (!row.checkOut) anomalyList.push('MISSING_CHECK_OUT');
+
+      if (row.checkIn && row.checkOut) {
+        const worked = this.computeWorkedHoursFromTimeline(
+          new Date(row.checkIn),
+          new Date(row.checkOut),
+          timeline,
+        );
+
+        row.totalHours = worked.totalHours;
+        if (worked.unclosedBreak) {
+          anomalyList.push('MISSING_BREAK_IN');
+        }
+      }
+
+      if (row.isLate) {
+        anomalyList.push('LATE');
+      }
+
+      return {
+        ...row,
+        anomalyList,
+        timeline: timeline.map((t) => ({
+          type: t.type,
+          at: t.at,
+          source: t.source,
+          autoRepaired: t.autoRepaired || false,
+        })),
+      };
+    });
 
     return {
       meta: {
