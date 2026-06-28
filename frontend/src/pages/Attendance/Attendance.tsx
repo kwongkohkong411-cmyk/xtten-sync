@@ -63,6 +63,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 export default function Attendance() {
   const currentEmployeeId = localStorage.getItem("employee_id") || "";
+  const currentCompanyId = localStorage.getItem("company_id") || undefined;
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
@@ -80,14 +81,6 @@ export default function Attendance() {
         endDate: range[1].endOf("day").toISOString(),
       });
       setEvents(Array.isArray(attendanceRes.data?.events) ? attendanceRes.data.events : []);
-
-      void getRosters()
-        .then((rosterRes) => {
-          setRosters(Array.isArray(rosterRes.data) ? rosterRes.data : []);
-        })
-        .catch(() => {
-          setRosters([]);
-        });
     } catch (error: unknown) {
       message.error(getErrorMessage(error, "Failed to load attendance"));
       setEvents([]);
@@ -97,18 +90,33 @@ export default function Attendance() {
     }
   }, [range]);
 
+  const fetchRosters = useCallback(() => {
+    return getRosters({
+      companyId: currentCompanyId,
+      startDate: range[0].startOf("day").toISOString(),
+      endDate: range[1].endOf("day").toISOString(),
+    })
+        .then((rosterRes) => {
+          setRosters(Array.isArray(rosterRes.data) ? rosterRes.data : []);
+        })
+        .catch(() => {
+          setRosters([]);
+        });
+  }, [currentCompanyId, range]);
+
   const rangeStart = range[0].valueOf();
   const rangeEnd = range[1].valueOf();
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       void fetchEvents();
+      void fetchRosters();
     }, 0);
 
     return () => {
       window.clearTimeout(timerId);
     };
-  }, [fetchEvents, rangeEnd, rangeStart]);
+  }, [fetchEvents, fetchRosters, rangeEnd, rangeStart]);
 
   const selfEvents = useMemo(() => events.filter((e) => e.employeeId === currentEmployeeId), [events, currentEmployeeId]);
 

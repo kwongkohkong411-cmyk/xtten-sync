@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
@@ -51,6 +52,8 @@ type AttendanceTimelineEvent = {
 
 @Injectable()
 export class AttendanceService {
+  private readonly logger = new Logger(AttendanceService.name);
+
   constructor(
     private prisma: PrismaService,
     private readonly eventLogService: EventLogService,
@@ -473,6 +476,18 @@ export class AttendanceService {
     }
   }
 
+  private triggerAutoRepairOpenAttendances(
+    req: AttendanceRequest,
+    dateRange: { startDate: Date; endDate: Date },
+  ) {
+    void this.autoRepairOpenAttendances(req, dateRange).catch(
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Background auto-repair skipped: ${message}`);
+      },
+    );
+  }
+
   private async getEmployee(userId: string) {
     const employee = await this.prisma.employee.findFirst({
       where: { userId },
@@ -766,7 +781,7 @@ export class AttendanceService {
 
     const user = this.requireUser(req);
 
-    await this.autoRepairOpenAttendances(
+    this.triggerAutoRepairOpenAttendances(
       { user },
       {
         startDate,

@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { RostersService } from './rosters.service';
 import { RequirePermission } from '../auth/permissions.decorator';
@@ -34,8 +35,18 @@ export class RostersController {
 
   @RequirePermission('shift:view')
   @Get()
-  findAll() {
-    return this.rostersService.findAll();
+  findAll(
+    @Query('companyId') companyId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('employeeId') employeeId?: string,
+  ) {
+    return this.rostersService.findAll({
+      companyId,
+      startDate,
+      endDate,
+      employeeId,
+    });
   }
 
   @RequirePermission('shift:view')

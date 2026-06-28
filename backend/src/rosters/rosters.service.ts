@@ -19,16 +19,51 @@ type RosterUpdateInput = {
   status?: string;
 };
 
+type RosterListQuery = {
+  companyId?: string;
+  startDate?: string;
+  endDate?: string;
+  employeeId?: string;
+};
+
 @Injectable()
 export class RostersService {
   constructor(private prisma: PrismaService) {}
 
+  private toMonthKey(value?: string) {
+    if (!value) return undefined;
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return undefined;
+    }
+
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    return `${parsed.getFullYear()}-${month}`;
+  }
+
   // =========================
   // GET ALL
   // =========================
-  async findAll(companyId?: string) {
+  async findAll(query: RosterListQuery = {}) {
+    const startMonth = this.toMonthKey(query.startDate);
+    const endMonth = this.toMonthKey(query.endDate);
+
+    const where = {
+      ...(query.companyId ? { companyId: query.companyId } : {}),
+      ...(query.employeeId ? { employeeId: query.employeeId } : {}),
+      ...(startMonth || endMonth
+        ? {
+            month: {
+              ...(startMonth ? { gte: startMonth } : {}),
+              ...(endMonth ? { lte: endMonth } : {}),
+            },
+          }
+        : {}),
+    };
+
     return this.prisma.roster.findMany({
-      where: companyId ? { companyId } : undefined,
+      where,
       include: {
         company: true,
         workGroup: true,
