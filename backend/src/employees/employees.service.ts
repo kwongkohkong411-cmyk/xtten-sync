@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -251,6 +252,14 @@ export class EmployeesService extends BaseRbacService {
     }
 
     return defaultValue;
+  }
+
+  private toStringOrUndefined(input: unknown) {
+    return typeof input === 'string' && input.length > 0 ? input : undefined;
+  }
+
+  private toStringOrNull(input: unknown) {
+    return typeof input === 'string' && input.length > 0 ? input : null;
   }
 
   private toPage(input: unknown, defaultValue = 1) {
@@ -852,52 +861,46 @@ export class EmployeesService extends BaseRbacService {
   // =================================================
   // CREATE (🔥 最终稳定版)
   // =================================================
-  async create(data: any, actor?: Actor) {
-    const { companyId } = await this.assertCompanyScope(actor, data.companyId);
+  async create(data: Record<string, unknown>, actor?: Actor) {
+    const companyId = this.toStringOrUndefined(data.companyId);
+    const scopedCompanyId = await this.assertCompanyScope(actor, companyId);
+    if (!scopedCompanyId.companyId) {
+      throw new BadRequestException('companyId is required');
+    }
+    const resolvedCompanyId = scopedCompanyId.companyId;
     const normalizedStatus = this.normalizeLifecycleStatus(
       data.status || 'ACTIVE',
     );
     const hiredAt = this.toDateOrNull(data.hiredAt) || new Date();
     const terminatedAt = this.toDateOrNull(data.terminatedAt);
-    data.companyId = companyId;
+    const userId = this.toStringOrUndefined(data.userId);
 
-    const payload: any = {
-      employeeNo: data.employeeNo,
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      position: data.position,
+    if (!userId) {
+      throw new ForbiddenException('userId is required');
+    }
+
+    const payload: Prisma.EmployeeUncheckedCreateInput = {
+      employeeNo: this.toStringOrUndefined(data.employeeNo),
+      name: this.toStringOrUndefined(data.name) ?? '',
+      email: this.toStringOrUndefined(data.email),
+      phone: this.toStringOrUndefined(data.phone),
+      position: this.toStringOrUndefined(data.position),
       status: normalizedStatus,
       hiredAt,
       terminatedAt:
-        normalizedStatus === 'LEFT' ? terminatedAt || new Date() : null,
+        normalizedStatus === 'LEFT' ? terminatedAt || new Date() : undefined,
       terminationReason:
-        normalizedStatus === 'LEFT' ? data.terminationReason || null : null,
-
-      // ⭐ 必须 relation 写法
-      company: {
-        connect: {
-          id: data.companyId,
-        },
-      },
+        normalizedStatus === 'LEFT'
+          ? this.toStringOrNull(data.terminationReason)
+          : undefined,
+      companyId: resolvedCompanyId,
+      userId,
     };
 
     // ⭐ department（可选）
-    if (data.departmentId) {
-      payload.department = {
-        connect: {
-          id: data.departmentId,
-        },
-      };
-    }
-
-    // ⭐ user（可选，但打卡必须用）
-    if (data.userId) {
-      payload.user = {
-        connect: {
-          id: data.userId,
-        },
-      };
+    const departmentId = this.toStringOrUndefined(data.departmentId);
+    if (departmentId) {
+      payload.departmentId = departmentId;
     }
 
     const created = await this.prisma.employee.create({
@@ -957,7 +960,7 @@ export class EmployeesService extends BaseRbacService {
   // =================================================
   // UPDATE (🔥 最终稳定版)
   // =================================================
-  async update(id: string, data: any, actor?: Actor) {
+  async update(id: string, data: Record<string, unknown>, actor?: Actor) {
     await this.assertEmployeeInScope(id, actor);
 
     const before = await this.prisma.employee.findUnique({
@@ -976,12 +979,14 @@ export class EmployeesService extends BaseRbacService {
       throw new NotFoundException('Employee not found');
     }
 
-    if (data.companyId) {
-      const { companyId } = await this.assertCompanyScope(
-        actor,
-        data.companyId,
-      );
-      data.companyId = companyId;
+    const companyId = this.toStringOrUndefined(data.companyId);
+    let resolvedCompanyId = before.companyId;
+    if (companyId) {
+      const scopedCompanyId = await this.assertCompanyScope(actor, companyId);
+      if (!scopedCompanyId.companyId) {
+        throw new BadRequestException('companyId is required');
+      }
+      resolvedCompanyId = scopedCompanyId.companyId;
     }
 
     const prevStatus = this.normalizeLifecycleStatus(before.status || 'ACTIVE');
@@ -1004,34 +1009,24 @@ export class EmployeesService extends BaseRbacService {
         ? (data.terminationReason ?? before.terminationReason ?? null)
         : null;
 
-    const payload: any = {
-      employeeNo: data.employeeNo ?? undefined,
-      name: data.name ?? undefined,
-      email: data.email ?? undefined,
-      phone: data.phone ?? undefined,
-      position: data.position ?? undefined,
+    const payload: Prisma.EmployeeUncheckedUpdateInput = {
+      employeeNo: this.toStringOrUndefined(data.employeeNo),
+      name: this.toStringOrUndefined(data.name),
+      email: this.toStringOrUndefined(data.email),
+      phone: this.toStringOrUndefined(data.phone),
+      position: this.toStringOrUndefined(data.position),
       status: nextStatus,
       hiredAt,
       terminatedAt,
       terminationReason,
-
-      company: {
-        connect: {
-          id: data.companyId || before.companyId,
-        },
-      },
+      companyId: resolvedCompanyId,
     };
 
-    if (data.departmentId) {
-      payload.department = {
-        connect: {
-          id: data.departmentId,
-        },
-      };
+    const departmentId = this.toStringOrUndefined(data.departmentId);
+    if (departmentId) {
+      payload.departmentId = departmentId;
     } else {
-      payload.department = {
-        disconnect: true,
-      };
+      payload.departmentId = null;
     }
 
     const updated = await this.prisma.employee.update({
@@ -1150,7 +1145,11 @@ export class EmployeesService extends BaseRbacService {
   // =================================================
   // LIFECYCLE UPDATE
   // =================================================
-  async updateLifecycle(id: string, data: any, actor?: Actor) {
+  async updateLifecycle(
+    id: string,
+    data: Record<string, unknown>,
+    actor?: Actor,
+  ) {
     await this.assertEmployeeInScope(id, actor);
 
     const before = await this.prisma.employee.findUnique({
@@ -1284,17 +1283,18 @@ export class EmployeesService extends BaseRbacService {
       });
     }
 
-    if (data.roleId && before.user?.id) {
-      await this.assertRoleAssignmentAllowed(data.roleId, actor);
+    const roleId = this.toStringOrUndefined(data.roleId);
+    if (roleId && before.user?.id) {
+      await this.assertRoleAssignmentAllowed(roleId, actor);
 
       const [nextRole, updatedUser] = await this.prisma.$transaction([
         this.prisma.role.findUnique({
-          where: { id: data.roleId },
+          where: { id: roleId },
           select: { id: true, name: true },
         }),
         this.prisma.user.update({
           where: { id: before.user.id },
-          data: { roleRelation: { connect: { id: data.roleId } } },
+          data: { roleRelation: { connect: { id: roleId } } },
           include: { roleRelation: { select: { id: true, name: true } } },
         }),
       ]);
