@@ -57,6 +57,23 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Report load test
+
+```bash
+# required: use a valid JWT that has report:view permission
+$ set REPORT_BEARER_TOKEN=<your_jwt>
+
+# optional knobs
+$ set REPORT_BASE_URL=http://localhost:3000
+$ set REPORT_DATE=2026-06-01
+$ set REPORT_MONTH=2026-06
+$ set REPORT_CONCURRENCY=10
+$ set REPORT_CYCLES=30
+$ set REPORT_COMPANY_ID=<company_id>
+
+$ npm run loadtest:reports
+```
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

@@ -24,6 +24,11 @@ type UserUpdateInput = {
   companyId?: string;
 };
 
+type RoleAssignment = {
+  roleId: string | null;
+  roleName: string;
+};
+
 @Injectable()
 export class UsersService extends BaseRbacService {
   private readonly superAdminOwnerUsername = (
@@ -34,6 +39,78 @@ export class UsersService extends BaseRbacService {
 
   constructor(prisma: PrismaService, rbacCore: RbacCoreService) {
     super(prisma, rbacCore);
+  }
+
+  private normalizeUsername(username: string | null | undefined) {
+    return (username || '').trim().toLowerCase();
+  }
+
+  private isOwnerUsername(username: string | null | undefined) {
+    return this.normalizeUsername(username) === this.superAdminOwnerUsername;
+  }
+
+  private assertOwnerAccountWritePolicy(params: {
+    currentUsername?: string | null;
+    currentCompanyId?: string | null;
+    nextRoleName: string;
+    patch: UserUpdateInput;
+  }) {
+    if (!this.isOwnerUsername(params.currentUsername)) {
+      return;
+    }
+
+    if (
+      typeof params.patch.username === 'string' &&
+      this.normalizeUsername(params.patch.username) !==
+        this.superAdminOwnerUsername
+    ) {
+      throw new ForbiddenException(
+        'Designated SUPER_ADMIN owner username cannot be changed',
+      );
+    }
+
+    if (typeof params.patch.password === 'string') {
+      throw new ForbiddenException(
+        'Designated SUPER_ADMIN owner password is managed by system policy',
+      );
+    }
+
+    if (
+      typeof params.patch.status === 'string' &&
+      params.patch.status !== 'ACTIVE'
+    ) {
+      throw new ForbiddenException(
+        'Designated SUPER_ADMIN owner account cannot be deactivated',
+      );
+    }
+
+    if (params.nextRoleName !== 'SUPER_ADMIN') {
+      throw new ForbiddenException(
+        'Designated SUPER_ADMIN owner account cannot be downgraded',
+      );
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(params.patch, 'companyId') &&
+      params.patch.companyId !== undefined &&
+      params.patch.companyId !== params.currentCompanyId
+    ) {
+      throw new ForbiddenException(
+        'Designated SUPER_ADMIN owner company scope cannot be changed',
+      );
+    }
+  }
+
+  private async getUserIdentity(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        username: true,
+        companyId: true,
+        role: true,
+        roleId: true,
+      },
+    });
   }
 
   private async assertUserInScope(id: string, actor?: Actor) {
@@ -214,12 +291,12 @@ export class UsersService extends BaseRbacService {
       data.companyId = companyId;
     }
 
-    const current = await this.prisma.user.findUnique({
-      where: { id },
-      select: { role: true, roleId: true, username: true },
-    });
+    const current = await this.getUserIdentity(id);
 
-    const roleUpdate = Object.prototype.hasOwnProperty.call(data, 'roleId')
+    const roleUpdate: RoleAssignment = Object.prototype.hasOwnProperty.call(
+      data,
+      'roleId',
+    )
       ? await this.resolveRoleAssignment(data.roleId, actor, 'EMPLOYEE')
       : {
           roleId: current?.roleId || null,
@@ -227,6 +304,12 @@ export class UsersService extends BaseRbacService {
         };
 
     this.assertSuperAdminOwnershipRule(current?.username, roleUpdate.roleName);
+    this.assertOwnerAccountWritePolicy({
+      currentUsername: current?.username,
+      currentCompanyId: current?.companyId,
+      nextRoleName: roleUpdate.roleName,
+      patch: data,
+    });
 
     const updateData: {
       email?: string;
@@ -271,6 +354,13 @@ export class UsersService extends BaseRbacService {
 
   async updateStatus(id: string, status: string, actor?: Actor) {
     await this.assertUserInScope(id, actor);
+
+    const target = await this.getUserIdentity(id);
+    if (this.isOwnerUsername(target?.username) && status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        'Designated SUPER_ADMIN owner account cannot be deactivated',
+      );
+    }
 
     return this.prisma.user.update({
       where: { id },
@@ -326,6 +416,13 @@ export class UsersService extends BaseRbacService {
   async resetPassword(id: string, newPassword: string, actor?: Actor) {
     await this.assertUserInScope(id, actor);
 
+    const target = await this.getUserIdentity(id);
+    if (this.isOwnerUsername(target?.username)) {
+      throw new ForbiddenException(
+        'Designated SUPER_ADMIN owner password is managed by system policy',
+      );
+    }
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     return this.prisma.user.update({
@@ -343,6 +440,13 @@ export class UsersService extends BaseRbacService {
 
   async remove(id: string, actor?: Actor) {
     await this.assertUserInScope(id, actor);
+
+    const target = await this.getUserIdentity(id);
+    if (this.isOwnerUsername(target?.username)) {
+      throw new ForbiddenException(
+        'Designated SUPER_ADMIN owner account cannot be deleted',
+      );
+    }
 
     return this.prisma.user.delete({
       where: { id },

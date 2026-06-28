@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XTTEN Agent</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>XTTEN Agent</h1>
+      <p class="sub">Employee desktop collector (Windows MVP)</p>
+
+      <div id="loggedInBanner" class="banner hidden">✓ Logged in</div>
+
+      <section id="loginPanel" class="panel">
+        <h2>Login and Bind</h2>
+        <label>
+          API Base URL
+          <input id="apiBaseUrl" type="text" placeholder="http://localhost:3000" />
+        </label>
+        <label>
+          Employee account
+          <input id="account" type="text" placeholder="email or username" />
+        </label>
+        <label>
+          Password
+          <input id="password" type="password" placeholder="password" />
+        </label>
+        <button id="loginBtn">Login and Start</button>
+      </section>
+
+      <section class="panel">
+        <h2>Status</h2>
+        <div id="statusText" class="status">Loading...</div>
+        <div class="actions">
+          <button id="startBtn" class="secondary">Start Collector</button>
+          <button id="stopBtn" class="secondary">Stop Collector</button>
+          <button id="logoutBtn" class="danger">Logout</button>
+        </div>
+        <label class="inline">
+          <input id="autoStart" type="checkbox" />
+          Launch at startup
+        </label>
+      </section>
+
+      <section class="panel">
+        <h2>Diagnostics</h2>
+        <div id="diagText" class="status">Loading diagnostics...</div>
+      </section>
+
+      <section class="panel">
+        <h2>Updates</h2>
+        <div id="updateText" class="status">Checking...</div>
+        <div class="actions" style="margin-top: 8px;">
+          <button id="checkUpdateBtn" class="secondary">Check for Updates</button>
+          <button id="applyUpdateBtn">Install Downloaded Update</button>
+        </div>
+      </section>
+
+      <p id="notice" class="notice"></p>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

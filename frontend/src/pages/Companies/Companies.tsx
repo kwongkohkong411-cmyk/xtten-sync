@@ -12,55 +12,38 @@ import {
   Tag,
   message,
 } from "antd";
+import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
+
+import PageHeader from "../../components/ui/PageHeader/PageHeader";
+import SearchBar from "../../components/ui/SearchBar";
+import type { Company } from "../../types/company";
+
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-} from "@ant-design/icons";
-import axios from "axios";
-
-import PageHeader from "../../components/PageHeader/PageHeader";
-import SearchBar from "../../components/SearchBar/SearchBar";
-
-const API_URL = "http://localhost:3000";
-
-type Company = {
-  id: string;
-  name: string;
-  code: string;
-  country: string;
-  timezone: string;
-  plan: string;
-  status: string;
-};
+  getCompanies,
+  createCompany,
+  updateCompany,
+  deleteCompany,
+} from "@/api/company";
 
 export default function Companies() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
   const [companies, setCompanies] = useState<Company[]>([]);
   const [filteredCompanies, setFilteredCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
 
   const [form] = Form.useForm();
 
-  const api = axios.create({
-    baseURL: API_URL,
-  });
-
-  api.interceptors.request.use((config) => {
-    const token = localStorage.getItem("xtten_token");
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    return config;
-  });
-
   const fetchCompanies = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const res = await api.get("/companies");
+      const res = await getCompanies();
       setCompanies(res.data);
       setFilteredCompanies(res.data);
     } catch {
@@ -77,11 +60,11 @@ export default function Companies() {
   const handleSearch = (value: string) => {
     const keyword = value.toLowerCase();
 
-    const result = companies.filter((company) => {
+    const result = companies.filter((c) => {
       return (
-        company.name?.toLowerCase().includes(keyword) ||
-        company.code?.toLowerCase().includes(keyword) ||
-        company.country?.toLowerCase().includes(keyword)
+        c.name?.toLowerCase().includes(keyword) ||
+        c.code?.toLowerCase().includes(keyword) ||
+        c.country?.toLowerCase().includes(keyword)
       );
     });
 
@@ -91,17 +74,19 @@ export default function Companies() {
   const openCreateModal = () => {
     setEditingCompany(null);
     form.resetFields();
+
     form.setFieldsValue({
       timezone: "Asia/Shanghai",
       plan: "PRO",
       status: "ACTIVE",
     });
+
     setModalOpen(true);
   };
 
-  const openEditModal = (company: Company) => {
-    setEditingCompany(company);
-    form.setFieldsValue(company);
+  const openEditModal = (record: Company) => {
+    setEditingCompany(record);
+    form.setFieldsValue(record);
     setModalOpen(true);
   };
 
@@ -110,23 +95,31 @@ export default function Companies() {
       const values = await form.validateFields();
 
       if (editingCompany) {
-        await api.patch(`/companies/${editingCompany.id}`, values);
+        await updateCompany(editingCompany.id, values);
         message.success("Company updated successfully");
       } else {
-        await api.post("/companies", values);
+        await createCompany(values);
         message.success("Company created successfully");
       }
 
       setModalOpen(false);
       fetchCompanies();
     } catch (error: any) {
-      message.error(error?.response?.data?.message || "Something went wrong");
+      const rawMessage = error?.response?.data?.message;
+      const normalized = Array.isArray(rawMessage)
+        ? rawMessage.join(", ")
+        : rawMessage;
+      message.error(normalized || "Something went wrong");
     }
+  };
+
+  const getEmployeeCount = (record: Company) => {
+    return record.users?.length ?? 0;
   };
 
   const handleDelete = async (id: string) => {
     try {
-      await api.delete(`/companies/${id}`);
+      await deleteCompany(id);
       message.success("Company deleted successfully");
       fetchCompanies();
     } catch {
@@ -138,44 +131,61 @@ export default function Companies() {
     {
       title: "Company",
       dataIndex: "name",
-      key: "name",
       render: (text: string, record: Company) => (
         <div>
           <strong>{text}</strong>
-          <div style={{ color: "#888", fontSize: 12 }}>{record.code}</div>
+          <div style={{ fontSize: 12, color: "#888" }}>{record.code}</div>
         </div>
       ),
     },
     {
       title: "Country",
       dataIndex: "country",
-      key: "country",
+      render: (value?: string) => value || "-",
     },
     {
       title: "Timezone",
       dataIndex: "timezone",
-      key: "timezone",
+    },
+    {
+      title: "Employees",
+      render: (_: unknown, record: Company) => getEmployeeCount(record),
+    },
+    {
+      title: "Created",
+      dataIndex: "createdAt",
+      render: (value: string) =>
+        value ? new Date(value).toLocaleDateString() : "-",
     },
     {
       title: "Plan",
       dataIndex: "plan",
-      key: "plan",
       render: (plan: string) => <Tag color="blue">{plan}</Tag>,
     },
     {
       title: "Status",
       dataIndex: "status",
-      key: "status",
       render: (status: string) => (
-        <Tag color={status === "ACTIVE" ? "green" : "red"}>{status}</Tag>
+        <Tag color={status === "ACTIVE" ? "green" : "volcano"}>
+          {status}
+        </Tag>
       ),
     },
     {
       title: "Action",
-      key: "action",
-      render: (_: unknown, record: Company) => (
+      render: (_: any, record: Company) => (
         <Space>
-          <Button icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+          <Button
+            icon={<EyeOutlined />}
+            onClick={() => navigate(`/companies/${record.id}`)}
+          >
+            View
+          </Button>
+
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => openEditModal(record)}
+          >
             Edit
           </Button>
 
@@ -197,14 +207,22 @@ export default function Companies() {
   ];
 
   return (
-    <Card bordered={false}>
+    <Card variant="borderless">
       <PageHeader
-        title="Companies"
-        subtitle="Manage your companies and organizations"
-        action={
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-            New Company
-          </Button>
+        title={t("company.title")}
+        subtitle={t("company.subtitle")}
+        extra={
+          <Space>
+            <Button>Export</Button>
+
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={openCreateModal}
+            >
+              {t("company.new")}
+            </Button>
+          </Space>
         }
       />
 
@@ -230,42 +248,30 @@ export default function Companies() {
       />
 
       <Modal
-        title={editingCompany ? "Edit Company" : "New Company"}
+        title={editingCompany ? t("company.edit") : t("company.new")}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
-        okText={editingCompany ? "Update" : "Create"}
+        okText={editingCompany ? t("company.update") : t("company.create")}
       >
         <Form form={form} layout="vertical">
-          <Form.Item
-            name="name"
-            label="Company Name"
-            rules={[{ required: true, message: "Please enter company name" }]}
-          >
+          <Form.Item name="name" label="Company Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
 
-          <Form.Item
-            name="code"
-            label="Company Code"
-            rules={[{ required: true, message: "Please enter company code" }]}
-          >
+          <Form.Item name="code" label="Company Code" rules={[{ required: true }]}>
             <Input disabled={!!editingCompany} />
           </Form.Item>
 
-          <Form.Item
-            name="country"
-            label="Country"
-            rules={[{ required: true, message: "Please enter country" }]}
-          >
+          <Form.Item name="logo" label="Logo URL">
+            <Input placeholder="https://example.com/logo.png" />
+          </Form.Item>
+
+          <Form.Item name="country" label="Country" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
 
-          <Form.Item
-            name="timezone"
-            label="Timezone"
-            rules={[{ required: true, message: "Please select timezone" }]}
-          >
+          <Form.Item name="timezone" label="Timezone">
             <Select
               options={[
                 { value: "Asia/Shanghai", label: "Asia/Shanghai" },
@@ -277,11 +283,7 @@ export default function Companies() {
             />
           </Form.Item>
 
-          <Form.Item
-            name="plan"
-            label="Plan"
-            rules={[{ required: true, message: "Please select plan" }]}
-          >
+          <Form.Item name="plan" label="Plan">
             <Select
               options={[
                 { value: "FREE", label: "FREE" },
@@ -291,15 +293,11 @@ export default function Companies() {
             />
           </Form.Item>
 
-          <Form.Item
-            name="status"
-            label="Status"
-            rules={[{ required: true, message: "Please select status" }]}
-          >
+          <Form.Item name="status" label="Status">
             <Select
               options={[
                 { value: "ACTIVE", label: "ACTIVE" },
-                { value: "DISABLED", label: "DISABLED" },
+                { value: "SUSPENDED", label: "SUSPENDED" },
               ]}
             />
           </Form.Item>

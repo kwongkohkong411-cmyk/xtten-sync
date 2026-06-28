@@ -1,23 +1,53 @@
 import { Button, Card, Form, Input, message } from "antd";
 import { LockOutlined, MailOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
-import { login } from "../../services/auth";
+import { login } from "../../api/auth";
 import "./Login.css";
 
 export default function Login() {
   const navigate = useNavigate();
 
-  const onFinish = async (values: { email: string; password: string }) => {
+  const onFinish = async (values: { account: string; password: string }) => {
     try {
-      const data = await login(values.email, values.password);
+      const res = await login(values.account, values.password);
+      const data = res.data;
+
+      console.log("LOGIN RESPONSE:", data);
+
+      if (!data?.user || !data?.access_token) {
+        message.error("Login failed: invalid response");
+        return;
+      }
+
+      const user = data.user;
 
       localStorage.setItem("xtten_token", data.access_token);
-      localStorage.setItem("xtten_user", JSON.stringify(data.user));
+      localStorage.setItem("xtten_user", JSON.stringify(user));
+
+      if (user.companyId) {
+        localStorage.setItem("company_id", user.companyId);
+      }
+
+      const employeeId = user.employeeId || user.id;
+
+      if (employeeId) {
+        localStorage.setItem("employee_id", employeeId);
+      }
 
       message.success("Login successful");
-      navigate("/dashboard");
-    } catch {
-      message.error("Invalid email or password");
+
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 300);
+
+    } catch (err: any) {
+      console.error("LOGIN ERROR:", err);
+
+      message.error(
+        err?.response?.data?.message ||
+        err?.message ||
+        "Login failed"
+      );
     }
   };
 
@@ -25,14 +55,17 @@ export default function Login() {
     <div className="login-page">
       <Card className="login-card">
         <h1>XTTEN Sync</h1>
-        <p>Employee Monitoring & Office Automation</p>
+        <p>Employee Monitoring & SaaS System</p>
 
         <Form layout="vertical" onFinish={onFinish}>
           <Form.Item
-            name="email"
-            rules={[{ required: true, message: "Please enter email" }]}
-          >
-            <Input prefix={<MailOutlined />} placeholder="Email" size="large" />
+          name="account"
+          rules={[{ required: true, message: "Please enter email or username" }]}
+        >
+          <Input
+            prefix={<MailOutlined />}
+            placeholder="Email or Username"
+            />
           </Form.Item>
 
           <Form.Item

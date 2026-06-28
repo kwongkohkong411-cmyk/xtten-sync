@@ -1,142 +1,181 @@
-import { Card, Col, Row, Table, Tag, Typography } from "antd";
-import {
-  BankOutlined,
-  TeamOutlined,
-  ClockCircleOutlined,
-  CheckCircleOutlined,
-} from "@ant-design/icons";
+import { useEffect, useMemo, useState } from "react";
+import { Card, Col, DatePicker, Row, Space, Statistic, Table, Tag, Typography, message } from "antd";
+import dayjs from "dayjs";
+import { getDailyReport } from "../../api/reports";
+import { getLiveActivity, getScreenshots } from "../../api/activity";
 
-import PageHeader from "../../components/PageHeader/PageHeader";
-import StatsCard from "../../components/StatsCard/StatsCard";
+const { Title, Text } = Typography;
 
-const recentActivities = [
-  {
-    key: "1",
-    user: "Admin",
-    action: "Created company XTTEN HQ",
-    time: "Just now",
-    status: "success",
-  },
-  {
-    key: "2",
-    user: "System",
-    action: "Company module initialized",
-    time: "Today",
-    status: "info",
-  },
-];
+type DashboardRow = {
+  key: string;
+  employeeId: string;
+  employeeName: string;
+  status: string;
+  currentApp: string;
+  workingHours: string;
+  idleMinutes: number;
+  lastScreenshotAt: string;
+};
 
 export default function Dashboard() {
-  const columns = [
-    {
-      title: "User",
-      dataIndex: "user",
-      key: "user",
-    },
-    {
-      title: "Activity",
-      dataIndex: "action",
-      key: "action",
-    },
-    {
-      title: "Time",
-      dataIndex: "time",
-      key: "time",
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      render: (status: string) => (
-        <Tag color={status === "success" ? "green" : "blue"}>
-          {status.toUpperCase()}
-        </Tag>
-      ),
-    },
-  ];
+  const [loading, setLoading] = useState(false);
+  const [date, setDate] = useState(dayjs());
+  const [daily, setDaily] = useState<any>(null);
+  const [live, setLive] = useState<any[]>([]);
+  const [shots, setShots] = useState<any[]>([]);
+
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true);
+      try {
+        const target = date.format("YYYY-MM-DD");
+        const [dailyRes, liveRes, shotRes] = await Promise.all([
+          getDailyReport({ date: target }),
+          getLiveActivity({ date: target, limit: 300 }),
+          getScreenshots({ date: target, limit: 500 }),
+        ]);
+
+        setDaily(dailyRes.data || null);
+        setLive(Array.isArray(liveRes.data?.items) ? liveRes.data.items : []);
+        setShots(Array.isArray(shotRes.data?.screenshots) ? shotRes.data.screenshots : []);
+      } catch (error: any) {
+        message.error(error?.response?.data?.message || "Failed to load dashboard data");
+        setDaily(null);
+        setLive([]);
+        setShots([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    run();
+  }, [date.valueOf()]);
+
+  const liveByEmployee = useMemo(() => {
+    const map = new Map<string, { appName: string; idleMinutes: number; lastSeenAt: string }>();
+    for (const item of live) {
+      const employeeId = String(item?.employeeId || "");
+      if (!employeeId) continue;
+      const at = String(item?.at || item?.createdAt || new Date().toISOString());
+      const current = map.get(employeeId);
+      if (current && new Date(current.lastSeenAt).getTime() > new Date(at).getTime()) continue;
+
+      map.set(employeeId, {
+        appName: String(item?.data?.appName || "-"),
+        idleMinutes: Number(item?.data?.idleSec ?? item?.data?.idleSeconds ?? 0) / 60,
+        lastSeenAt: at,
+      });
+    }
+    return map;
+  }, [live]);
+
+  const screenshotByEmployee = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const shot of shots) {
+      const employeeId = String(shot?.employeeId || "");
+      if (!employeeId || map.has(employeeId)) continue;
+      map.set(employeeId, String(shot?.capturedAt || ""));
+    }
+    return map;
+  }, [shots]);
+
+  const tableRows = useMemo<DashboardRow[]>(() => {
+    const rows = Array.isArray(daily?.rows) ? daily.rows : [];
+    return rows.map((row: any, idx: number) => {
+      const liveData = liveByEmployee.get(String(row.employeeId));
+      const idleMinutes = Number(liveData?.idleMinutes || 0);
+      return {
+        key: String(row.employeeId || idx),
+        employeeId: String(row.employeeId || ""),
+        employeeName: String(row.name || row.username || row.employeeId || "-"),
+        status: String(row.status || "-"),
+        currentApp: String(liveData?.appName || "-"),
+        workingHours: String(row.totalHoursDuration || (row.totalHoursDecimal != null ? Number(row.totalHoursDecimal).toFixed(2) : "-")),
+        idleMinutes,
+        lastScreenshotAt: String(screenshotByEmployee.get(String(row.employeeId)) || ""),
+      };
+    });
+  }, [daily, liveByEmployee, screenshotByEmployee]);
+
+  const statusSummary = daily?.statusSummary || {};
+  const totalEmployees = Number(daily?.totalEmployees || 0);
+  const onlineCount = liveByEmployee.size;
+  const offlineCount = Math.max(totalEmployees - onlineCount, 0);
+  const idleCount = tableRows.filter((row) => row.idleMinutes >= 5).length;
+  const workingCount = Math.max(onlineCount - idleCount, 0);
 
   return (
-    <div>
-      <PageHeader
-        title="Dashboard"
-        subtitle="Overview of your organization"
-      />
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Card>
+        <Space style={{ width: "100%", justifyContent: "space-between" }}>
+          <div>
+            <Title level={3} style={{ marginBottom: 6 }}>Dashboard</Title>
+            <Text type="secondary">今日概览与员工实时状态</Text>
+          </div>
+          <DatePicker value={date} onChange={(v) => setDate(v || dayjs())} />
+        </Space>
+      </Card>
 
-      <Row gutter={[20, 20]}>
-        <Col xs={24} sm={12} lg={6}>
-          <StatsCard title="Companies" value={1} prefix={<BankOutlined />} />
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card loading={loading}><Statistic title="Today's Attendance" value={totalEmployees} /></Card>
         </Col>
-
-        <Col xs={24} sm={12} lg={6}>
-          <StatsCard title="Employees" value={0} prefix={<TeamOutlined />} />
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card loading={loading}><Statistic title="Present" value={Number(daily?.present || 0)} /></Card>
         </Col>
-
-        <Col xs={24} sm={12} lg={6}>
-          <StatsCard
-            title="Online Now"
-            value={0}
-            prefix={<CheckCircleOutlined />}
-          />
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card loading={loading}><Statistic title="Absent" value={Number(daily?.absent || 0)} /></Card>
         </Col>
-
-        <Col xs={24} sm={12} lg={6}>
-          <StatsCard
-            title="Attendance Today"
-            value={0}
-            suffix="%"
-            prefix={<ClockCircleOutlined />}
-          />
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card loading={loading}><Statistic title="Late" value={Number(statusSummary.late || 0)} /></Card>
         </Col>
-      </Row>
-
-      <Row gutter={[20, 20]} style={{ marginTop: 20 }}>
-        <Col xs={24} lg={16}>
-          <Card bordered={false} title="Attendance Overview">
-            <div
-              style={{
-                height: 260,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#94a3b8",
-                background: "#f8fafc",
-                borderRadius: 12,
-              }}
-            >
-              Chart will be added later
-            </div>
-          </Card>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card loading={loading}><Statistic title="Leave" value={Number(statusSummary.leave || 0)} /></Card>
         </Col>
-
-        <Col xs={24} lg={8}>
-          <Card bordered={false} title="Today Summary">
-            <Typography.Paragraph>
-              Total companies: <b>1</b>
-            </Typography.Paragraph>
-
-            <Typography.Paragraph>
-              Total employees: <b>0</b>
-            </Typography.Paragraph>
-
-            <Typography.Paragraph>
-              Online employees: <b>0</b>
-            </Typography.Paragraph>
-
-            <Typography.Paragraph>
-              Attendance rate: <b>0%</b>
-            </Typography.Paragraph>
-          </Card>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card loading={loading}><Statistic title="Online" value={onlineCount} /></Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card loading={loading}><Statistic title="Offline" value={offlineCount} /></Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card loading={loading}><Statistic title="Idle" value={idleCount} /></Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card loading={loading}><Statistic title="Working" value={workingCount} /></Card>
         </Col>
       </Row>
 
-      <Card bordered={false} title="Recent Activities" style={{ marginTop: 20 }}>
+      <Card title="员工实时状态表" loading={loading}>
         <Table
           rowKey="key"
-          columns={columns}
-          dataSource={recentActivities}
-          pagination={false}
+          dataSource={tableRows}
+          pagination={{ pageSize: 10 }}
+          columns={[
+            { title: "员工", dataIndex: "employeeName" },
+            {
+              title: "Status",
+              dataIndex: "status",
+              render: (v: string) => <Tag color={v === "LATE" ? "orange" : v === "LEAVE" ? "blue" : v === "ON_TIME" ? "green" : "default"}>{v}</Tag>,
+            },
+            { title: "当前应用", dataIndex: "currentApp" },
+            {
+              title: "Working Hours",
+              dataIndex: "workingHours",
+            },
+            {
+              title: "Idle",
+              dataIndex: "idleMinutes",
+              render: (v: number) => `${Math.round(v)} min`,
+            },
+            {
+              title: "Last Screenshot",
+              dataIndex: "lastScreenshotAt",
+              render: (v: string) => (v ? dayjs(v).format("YYYY-MM-DD HH:mm:ss") : "-"),
+            },
+          ]}
         />
       </Card>
-    </div>
+    </Space>
   );
 }

@@ -1,0 +1,173 @@
+/* =========================
+   XTTEN Sync Global Theme
+========================= */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, Arial, "Microsoft YaHei", sans-serif;
+  background: #f5f7fb;
+  color: #0f172a;
+}
+
+/* =========================
+   Sidebar Menu
+========================= */
+
+.ant-menu-dark {
+  background: #020617 !important;
+}
+
+.ant-menu-dark .ant-menu-item {
+  height: 42px;
+  line-height: 42px;
+  border-radius: 10px;
+  margin: 6px 8px;
+  width: calc(100% - 16px);
+  transition: all 0.25s ease;
+}
+
+.ant-menu-dark .ant-menu-item .anticon {
+  font-size: 16px;
+}
+
+.ant-menu-dark .ant-menu-item .ant-menu-title-content {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.35);
+}
+
+.ant-menu-dark .ant-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* =========================
+   Card
+========================= */
+
+.ant-card {
+  border-radius: 14px;
+  border: 1px solid #eef0f4;
+
+  box-shadow:
+    0 2px 10px rgba(15, 23, 42, 0.04),
+    0 8px 30px rgba(15, 23, 42, 0.05);
+
+  transition: all 0.25s ease;
+}
+
+.ant-card:hover {
+  transform: translateY(-2px);
+
+  box-shadow:
+    0 10px 40px rgba(15, 23, 42, 0.08);
+}
+
+.ant-card-head {
+  border-bottom: 1px solid #eef0f4;
+  min-height: 52px;
+}
+
+.ant-card-head-title {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* =========================
+   Table
+========================= */
+
+.ant-table-wrapper {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.ant-table {
+  color: #0f172a;
+}
+
+.ant-table-thead > tr > th {
+  background: #f8fafc !important;
+  color: #334155;
+  font-weight: 700;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #f8fafc !important;
+}
+
+/* =========================
+   Button
+========================= */
+
+.ant-btn {
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.ant-btn-primary {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  border: none;
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, #1d4ed8, #4338ca) !important;
+}
+
+/* =========================
+   Input / Select
+========================= */
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector {
+  border-radius: 10px !important;
+}
+
+/* =========================
+   Tag
+========================= */
+
+.ant-tag {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-weight: 600;
+}
+
+/* =========================
+   Dropdown
+========================= */
+
+.ant-dropdown-menu {
+  border-radius: 12px !important;
+  padding: 8px !important;
+}
+
+.ant-dropdown-menu-item {
+  border-radius: 8px !important;
+}
+
+/* =========================
+   Scrollbar
+========================= */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
