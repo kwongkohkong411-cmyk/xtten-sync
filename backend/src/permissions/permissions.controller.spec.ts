@@ -7,7 +7,9 @@ describe('PermissionsController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PermissionsController],
-    }).compile();
+    })
+      .useMocker(() => ({}))
+      .compile();
 
     controller = module.get<PermissionsController>(PermissionsController);
   });
