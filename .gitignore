@@ -7,3 +7,4 @@ windows-agent/desktop-agent/node_modules/
 *.log
 .env
 .env.*
+!backend/.env.production.example
