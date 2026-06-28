@@ -1,0 +1,9 @@
+backend/uploads/
+frontend/tsconfig.tsbuildinfo
+git-status.txt
+windows-agent/desktop-agent/build/
+windows-agent/desktop-agent/dist/
+windows-agent/desktop-agent/node_modules/
+*.log
+.env
+.env.*
