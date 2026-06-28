@@ -1,18 +1,47 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import express from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-    }),
-  );
+  const allowedOrigin = (origin?: string) => {
+    if (!origin) return true;
 
-  app.enableCors();
+    const localhostPattern = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+    const lanPattern = /^http:\/\/(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/;
+    return localhostPattern.test(origin) || lanPattern.test(origin);
+  };
 
-  await app.listen(3000);
+  // =========================
+  // CORS FIX（就是你现在报错原因）
+  // =========================
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigin(origin)) {
+        callback(null, origin);
+        return;
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-company-id', 'companyid'],
+  });
+
+  const uploadsRoot = join(process.cwd(), 'uploads');
+  if (!existsSync(uploadsRoot)) {
+    mkdirSync(uploadsRoot, { recursive: true });
+  }
+  app.use('/uploads', express.static(uploadsRoot));
+
+  await app.listen(3000, '0.0.0.0');
 }
 bootstrap();

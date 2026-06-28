@@ -1,0 +1,66 @@
+{
+  "name": "xtten-desktop-agent",
+  "version": "0.1.0",
+  "description": "XTTEN desktop agent for employee telemetry",
+  "main": "main.js",
+  "private": true,
+  "author": "XTTEN",
+  "scripts": {
+    "dev": "electron .",
+    "pack:win": "electron-builder --win nsis msi --x64",
+    "pack:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.xtten.agent",
+    "productName": "XTTEN Agent",
+    "executableName": "xtten-agent",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "config.json",
+      "renderer/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../activity-agent.js",
+        "to": "agent/activity-agent.js"
+      },
+      {
+        "from": "../windows-telemetry.ps1",
+        "to": "agent/windows-telemetry.ps1"
+      }
+    ],
+    "win": {
+      "icon": "build/app.ico",
+      "artifactName": "xtten-agent-setup.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "msi",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "electron-winstaller@5.4.0": true
+  },
+  "dependencies": {
+    "sharp": "^0.35.2"
+  }
+}

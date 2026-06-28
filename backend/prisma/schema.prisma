@@ -26,6 +26,27 @@ model Company {
   shiftTemplates ShiftTemplate[]
   rosters        Roster[]
   attendances    Attendance[]
+  leaves         Leave[]
+  holidays       Holiday[]
+  tenantConfig   TenantConfig?
+  auditLogs      TenantAuditLog[]
+}
+
+model TenantConfig {
+  id String @id @default(uuid())
+
+  companyId String  @unique
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  isolationLevel           String  @default("STRICT")
+  allowCrossTenantReporting Boolean @default(false)
+  enforceSso               Boolean @default(false)
+  defaultUserLimit         Int     @default(100)
+  defaultStorageGb         Int     @default(20)
+  trialDays                Int     @default(14)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model User {
@@ -34,31 +55,49 @@ model User {
   username  String   @unique
   password  String
   name      String
-  role      String   @default("SUPER_ADMIN")
+  role      String   @default("EMPLOYEE")
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  companyId    String?
-  company      Company? @relation(fields: [companyId], references: [id])
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  // ⭐ 关键修复：1对1绑定 Employee
+  employee  Employee?
+
   roleId       String?
-  roleRelation Role?    @relation("UserRoleRelation", fields: [roleId], references: [id])
+  roleRelation Role? @relation("UserRoleRelation", fields: [roleId], references: [id])
+
+  managedDepartments Department[] @relation("DepartmentManager")
+
+  auditLogs TenantAuditLog[] @relation("TenantAuditLogActor")
 }
 
-model Department {
-  id        String   @id @default(uuid())
-  name      String
-  code      String   @unique
-  status    String   @default("ACTIVE")
+model TenantAuditLog {
+  id String @id @default(uuid())
 
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  actorId String?
+  actor   User? @relation("TenantAuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
 
-  employees   Employee[]
-  attendances Attendance[]
+  action     String
+  scope      String
+  entityType String
+  entityId   String?
+
+  beforeData Json?
+  afterData  Json?
+  meta       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([action])
+  @@index([companyId, scope, entityType, action, createdAt])
+  @@index([scope, entityType, createdAt])
 }
 
 model Employee {
@@ -69,70 +108,97 @@ model Employee {
   phone      String?
   position   String?
   status     String  @default("ACTIVE")
+  hiredAt    DateTime?
+  terminatedAt DateTime?
+  terminationReason String?
 
   companyId    String
   departmentId String?
-
   workGroupId  String?
 
-  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  workGroup    WorkGroup?  @relation(fields: [workGroupId], references: [id], onDelete: SetNull)
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department  Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  workGroup   WorkGroup?  @relation(fields: [workGroupId], references: [id], onDelete: SetNull)
 
-  rosters      Roster[]
-  attendances  Attendance[]
+  // ⭐ 关键修复：必须绑定 User（强一致）
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  rosters     Roster[]
+  attendances Attendance[]
+  leaves      Leave[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Department {
+  id     String @id @default(uuid())
+  name   String
+  code   String @unique
+  status String @default("ACTIVE")
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  managerId String?
+  manager   User? @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+  workGroups WorkGroup[]
 }
 
 model Role {
-  id          String   @id @default(uuid())
-  name        String   @unique
+  id          String  @id @default(uuid())
+  name        String  @unique
   description String?
-  isSystem    Boolean  @default(false)
+  isSystem    Boolean @default(false)
 
   users       User[] @relation("UserRoleRelation")
   permissions RolePermission[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Permission {
-  id        String   @id @default(uuid())
-  module    String
-  action    String
-  label     String?
+  id   String  @id @default(uuid())
+  key  String  @unique
+  desc String?
 
   createdAt DateTime @default(now())
 
   roles RolePermission[]
-
-  @@unique([module, action])
 }
 
 model RolePermission {
+  id           String @id @default(uuid())
   roleId       String
   permissionId String
 
   role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
-  @@id([roleId, permissionId])
+  @@unique([roleId, permissionId])
 }
 
 model WorkGroup {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   name        String
   code        String?
   description String?
   color       String?
-  sortOrder   Int @default(0)
+  sortOrder   Int     @default(0)
   isActive    Boolean @default(true)
 
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
   employees Employee[]
   rosters   Roster[]
@@ -142,76 +208,274 @@ model WorkGroup {
 }
 
 model ShiftTemplate {
-  id            String @id @default(uuid())
-  name          String
-  code          String?
+  id   String  @id @default(uuid())
+  name String
+  code String?
 
-  shiftType     String
-  startTime     String
-  endTime       String
+  shiftType String
+  startTime String
+  endTime   String
 
-  breakMinutes  Int @default(60)
-  crossDay      Boolean @default(false)
+  breakMinutes Int     @default(60)
+  crossDay     Boolean @default(false)
 
   lateAfter     Int @default(10)
   earlyLeave    Int @default(10)
   overtimeAfter Int @default(0)
 
-  color         String?
-  isActive      Boolean @default(true)
+  color    String?
+  isActive Boolean @default(true)
 
-  companyId     String
-  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  rosters       Roster[]
+  rosters Roster[]
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Roster {
-  id          String @id @default(uuid())
+  id String @id @default(uuid())
 
-  date        DateTime
-  month       String
+  month String
 
   employeeId  String
   workGroupId String
   shiftId     String
   companyId   String
 
-  status      String @default("ASSIGNED")
+  status String @default("ASSIGNED")
 
-  employee    Employee      @relation(fields: [employeeId], references: [id])
-  workGroup   WorkGroup     @relation(fields: [workGroupId], references: [id], onDelete: Cascade)
-  shift       ShiftTemplate @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee  Employee      @relation(fields: [employeeId], references: [id])
+  workGroup WorkGroup     @relation(fields: [workGroupId], references: [id], onDelete: Cascade)
+  shift     ShiftTemplate @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  company   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Attendance {
-  id           String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  employeeId   String
-  companyId    String
-  departmentId String?
+  employeeId String
+  companyId  String
 
-  checkIn      DateTime?
-  checkOut     DateTime?
+  date DateTime @db.Date
 
-  breakStart   DateTime?
-  breakEnd     DateTime?
+  checkIn  DateTime?
+  checkOut DateTime?
 
-  date         DateTime
+  breakStart DateTime?
+  breakEnd   DateTime?
 
-  status       String @default("PENDING")
-  totalHours   Float?
+  totalHours Decimal? @db.Decimal(5, 2)
 
-  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  status String @default("PRESENT")
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, date])
+
+  // ⭐ 防止重复打卡（关键）
+  @@unique([employeeId, date])
+}
+
+model Leave {
+  id         String   @id @default(uuid())
+  employeeId String
+  companyId  String
+
+  startDate  DateTime
+  endDate    DateTime
+
+  type   String
+  reason String?
+  status String   @default("PENDING")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, status])
+}
+
+model Holiday {
+  id        String   @id @default(uuid())
+  name      String
+  date      DateTime @db.Date
+  country   String
+  scope     String   @default("COUNTRY")
+  status    String   @default("ACTIVE")
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([country, date])
+  @@index([companyId, date])
+  @@unique([companyId, country, date, name])
+}
+
+model EmployeeEventQueue {
+  id String @id
+
+  companyId String
+  entityType String
+  entityId String
+  action String
+  eventLogId String @unique
+
+  payload Json?
+  status String @default("PENDING")
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  processedAt DateTime?
+  lastError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, availableAt])
+  @@index([companyId, entityType, entityId])
+}
+
+model Employee360Projection {
+  id String @id
+
+  companyId String
+  employeeId String @unique
+  version Int @default(1)
+  lastEventLogId String?
+  snapshot Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, employeeId])
+}
+
+model EmployeeEventDeadLetter {
+  id String @id
+
+  companyId String
+  entityType String
+  entityId String
+  action String
+  eventLogId String @unique
+
+  payload Json?
+  attempts Int @default(0)
+  lastError String?
+  failedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, entityType, entityId])
+  @@index([failedAt])
+}
+
+model EmployeeEventProcessingLedger {
+  id String @id
+
+  companyId String
+  entityType String
+  entityId String
+  eventLogId String @unique
+  processedAt DateTime @default(now())
+  projectionVersion Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, entityType, entityId])
+  @@index([processedAt])
+}
+
+model EmployeeRepairLock {
+  id String @id
+
+  companyId String
+  entityType String
+  entityId String
+  owner String
+  source String
+  reason String?
+  lockedUntil DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, entityType, entityId])
+  @@index([lockedUntil])
+}
+
+model EventControlDecisionLog {
+  id String @id
+
+  decisionKey String
+  decisionText String
+  reason Json?
+  impact Json?
+  metrics Json?
+  stable Boolean @default(true)
+  stableForMs Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([decisionKey])
+}
+
+model ActivityScreenshot {
+  id String @id @default(uuid())
+
+  companyId  String
+  employeeId String
+  teamId     String?
+  deviceId   String?
+  agentVersion String?
+  captureSource String @default("SCREENSHOT")
+
+  capturedAt DateTime
+
+  appName     String?
+  windowTitle String?
+  keyboardCount Int @default(0)
+  mouseCount    Int @default(0)
+  idleSec       Int @default(0)
+
+  hash            String?
+  sha256          String?
+  perceptualHash  String?
+  objectKey       String
+  storageProvider String @default("LOCAL")
+  url             String
+
+  sizeBytes Int?
+  width     Int?
+  height    Int?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, capturedAt])
+  @@index([companyId, employeeId, capturedAt])
+  @@index([companyId, deviceId, capturedAt])
+  @@index([companyId, captureSource, capturedAt])
+  @@index([employeeId, capturedAt])
+  @@index([capturedAt])
 }
