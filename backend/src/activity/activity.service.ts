@@ -438,6 +438,36 @@ export class ActivityService
       },
     });
 
+    // Write audit log so getScreenshots() (which reads tenantAuditLog) can find this record
+    await this.prisma.tenantAuditLog.create({
+      data: {
+        companyId: String(companyId),
+        actorId: actor?.id ?? null,
+        action: 'ACTIVITY_SCREENSHOT',
+        scope: 'ACTIVITY',
+        entityType: 'EmployeeActivity',
+        entityId: employeeId,
+        afterData: {
+          employeeId,
+          appName: payload.appName || null,
+          windowTitle: payload.windowTitle || null,
+          screenshotUrl: saved.screenshotUrl,
+          objectKey: saved.objectKey,
+          storageProvider: saved.storageProvider,
+          capturedAt: capturedAt.toISOString(),
+          keyboardCount: Number(payload.keyboardCount || 0),
+          mouseCount: Number(payload.mouseCount || 0),
+          idleSec: Number(payload.idleSec || 0),
+          metadata: {
+            objectKey: saved.objectKey,
+            storageProvider: saved.storageProvider,
+            screenshotId: record.id,
+          },
+        },
+      },
+      select: { id: true },
+    });
+
     return {
       ...record,
       screenshotUrl: record.url,
