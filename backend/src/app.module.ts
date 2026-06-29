@@ -22,6 +22,7 @@ import { AttendanceModule } from './attendance/attendance.module';
 import { LeavesModule } from './leaves/leaves.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './auth/permissions.guard';
+import { PermissionGuard } from './auth/permission.guard';
 import { TenantConfigModule } from './tenant-config/tenant-config.module';
 import { TenantAuditLogsModule } from './tenant-audit-logs/tenant-audit-logs.module';
 import { EventsModule } from './events/events.module';
@@ -75,6 +76,10 @@ import { AdminModule } from './admin/admin.module';
     {
       provide: APP_GUARD,
       useClass: PermissionsGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionGuard,
     },
   ],
 })

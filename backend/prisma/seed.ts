@@ -88,11 +88,21 @@ async function main() {
   };
 
   for (const name of roles) {
-    await prisma.role.upsert({
-      where: { name },
-      update: { description: name, isSystem: true },
-      create: { name, description: name, isSystem: true },
+    // 查找系统角色（companyId = null）
+    let existingRole = await prisma.role.findFirst({
+      where: { name, companyId: null },
     });
+
+    if (!existingRole) {
+      await prisma.role.create({
+        data: { name, description: name, isSystem: true, companyId: null },
+      });
+    } else {
+      await prisma.role.update({
+        where: { id: existingRole.id },
+        data: { description: name, isSystem: true },
+      });
+    }
   }
 
   for (const key of permissions) {

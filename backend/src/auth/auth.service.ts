@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ROLE_PERMISSIONS_MATRIX, SYSTEM_ROLES } from './permissions.constant';
 
 @Injectable()
 export class AuthService {
@@ -89,15 +90,28 @@ export class AuthService {
 
     const roleName = user.roleRelation?.name || user.role;
 
+    // 获取权限列表
+    let permissions: string[] = [];
+
+    // 如果是系统角色，从矩阵中获取
+    if (Object.values(SYSTEM_ROLES).includes(roleName as any)) {
+      permissions =
+        ROLE_PERMISSIONS_MATRIX[roleName as keyof typeof ROLE_PERMISSIONS_MATRIX] ||
+        [];
+    } else {
+      // 如果是自定义角色，从数据库获取
+      permissions =
+        user.roleRelation?.permissions?.map((rp) => rp.permission.key) || [];
+    }
+
     const token = this.jwt.sign({
       sub: user.id,
+      username: user.username, // 用于 SuperAdmin 检查
       role: roleName,
       email: user.email,
       companyId: user.companyId,
+      permissions, // 可选：某些应用场景下把权限放进 JWT
     });
-
-    const permissions =
-      user.roleRelation?.permissions?.map((rp) => rp.permission.key) || [];
 
     return {
       access_token: token,

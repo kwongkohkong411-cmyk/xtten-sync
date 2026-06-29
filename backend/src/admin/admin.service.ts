@@ -56,8 +56,8 @@ export class AdminService {
   }
 
   private async ensureSuperAdminRoleId() {
-    const role = await this.prisma.role.findUnique({
-      where: { name: 'SUPER_ADMIN' },
+    const role = await this.prisma.role.findFirst({
+      where: { name: 'SUPER_ADMIN', companyId: null },
       select: { id: true },
     });
 

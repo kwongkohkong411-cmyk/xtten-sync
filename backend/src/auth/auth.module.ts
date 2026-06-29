@@ -6,6 +6,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 
 import { JwtStrategy } from './jwt.strategy';
+import { PermissionGuard } from './permission.guard';
+import { SuperAdminGuard } from './super-admin.guard';
+import { PermissionSeederService } from './permission-seeder.service';
+import { PermissionInitializeService } from '../commands/seed.command';
 
 @Module({
   imports: [
@@ -16,7 +20,20 @@ import { JwtStrategy } from './jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    PermissionGuard,
+    SuperAdminGuard,
+    PermissionSeederService,
+    PermissionInitializeService,
+  ],
+  exports: [
+    AuthService,
+    PermissionGuard,
+    SuperAdminGuard,
+    PermissionSeederService,
+    PermissionInitializeService,
+  ],
 })
 export class AuthModule {}

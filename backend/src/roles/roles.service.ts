@@ -47,11 +47,21 @@ export class RolesService extends BaseRbacService {
     ];
 
     for (const role of roles) {
-      await this.prisma.role.upsert({
-        where: { name: role.name },
-        update: role,
-        create: role,
+      // 查找系统角色（companyId = null）
+      let existingRole = await this.prisma.role.findFirst({
+        where: { name: role.name, companyId: null },
       });
+
+      if (!existingRole) {
+        await this.prisma.role.create({
+          data: { ...role, companyId: null },
+        });
+      } else {
+        await this.prisma.role.update({
+          where: { id: existingRole.id },
+          data: role,
+        });
+      }
     }
 
     return { message: 'Default roles initialized' };
