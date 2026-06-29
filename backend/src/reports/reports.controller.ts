@@ -56,6 +56,21 @@ export class ReportsController {
     return this.reportsService.getMonthlyReport(req, { month, companyId });
   }
 
+  @RequirePermission('report:view')
+  @Get('summary')
+  getAttendanceSummary(
+    @Req() req: RequestWithUser,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.reportsService.getAttendanceSummary(req, {
+      startDate,
+      endDate,
+      companyId,
+    });
+  }
+
   @RequirePermission('report:export')
   @Get('export/day')
   async exportDay(

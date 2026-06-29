@@ -17,6 +17,12 @@ export const getDailyDetailReport = (params: {
 export const getMonthlyReport = (params: { month: string; companyId?: string }) =>
   client.get("/reports/monthly", { params });
 
+export const getAttendanceSummary = (params: {
+  startDate?: string;
+  endDate?: string;
+  companyId?: string;
+}) => client.get("/reports/summary", { params });
+
 export const downloadDayReport = async (params: { date: string; companyId?: string; format?: "csv" | "xlsx" }) => {
   const res = await client.get("/reports/export/day", {
     params,

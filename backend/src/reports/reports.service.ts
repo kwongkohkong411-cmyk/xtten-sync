@@ -1007,6 +1007,118 @@ export class ReportsService extends BaseRbacService {
     return value;
   }
 
+  async getAttendanceSummary(
+    req: RequestWithUser,
+    query: { startDate?: string; endDate?: string; companyId?: string },
+  ) {
+    const today = new Date();
+    const defaultStart = new Date(today);
+    defaultStart.setDate(defaultStart.getDate() - 29);
+
+    const start = this.dayStart(
+      query.startDate ? this.parseDateText(query.startDate) : defaultStart,
+    );
+    const end = this.dayEnd(
+      query.endDate ? this.parseDateText(query.endDate) : today,
+    );
+
+    if (start.getTime() > end.getTime()) {
+      throw new BadRequestException('startDate must be earlier than endDate');
+    }
+
+    const companyId = await this.resolveCompanyId(req, query.companyId);
+    const rows = await this.buildEmployeeStatusRows(companyId, start, end);
+    const statusTotals = this.buildStatusSummary(rows);
+
+    const byEmployee = new Map<
+      string,
+      {
+        employeeId: string;
+        username: string;
+        name: string;
+        totalDays: number;
+        onTime: number;
+        late: number;
+        leave: number;
+        holiday: number;
+        absent: number;
+        missing: number;
+        totalHoursDecimal: number;
+        otHoursDecimal: number;
+      }
+    >();
+
+    for (const row of rows) {
+      const current = byEmployee.get(row.employeeId) || {
+        employeeId: row.employeeId,
+        username: row.username,
+        name: row.name,
+        totalDays: 0,
+        onTime: 0,
+        late: 0,
+        leave: 0,
+        holiday: 0,
+        absent: 0,
+        missing: 0,
+        totalHoursDecimal: 0,
+        otHoursDecimal: 0,
+      };
+
+      current.totalDays += 1;
+      if (row.status === AttendanceStatus.ON_TIME) current.onTime += 1;
+      if (row.status === AttendanceStatus.LATE) current.late += 1;
+      if (row.status === AttendanceStatus.LEAVE) current.leave += 1;
+      if (row.status === AttendanceStatus.HOLIDAY) current.holiday += 1;
+      if (row.status === AttendanceStatus.ABSENT) current.absent += 1;
+      if (row.status === AttendanceStatus.MISSING) current.missing += 1;
+      current.totalHoursDecimal += Number(row.totalHoursDecimal || 0);
+      current.otHoursDecimal += Number(row.otHoursDecimal || 0);
+
+      byEmployee.set(row.employeeId, current);
+    }
+
+    const employeeRows = Array.from(byEmployee.values()).map((row) => {
+      const present = row.onTime + row.late;
+      return {
+        ...row,
+        present,
+        attendanceRate: row.totalDays
+          ? Number(((present / row.totalDays) * 100).toFixed(2))
+          : 0,
+        totalHoursDecimal: Number(row.totalHoursDecimal.toFixed(2)),
+        otHoursDecimal: Number(row.otHoursDecimal.toFixed(2)),
+      };
+    });
+
+    const totalEmployees = employeeRows.length;
+    const present = statusTotals.onTime + statusTotals.late;
+    const absent = statusTotals.absent + statusTotals.missing;
+
+    return {
+      startDate: this.dateKey(start),
+      endDate: this.dateKey(end),
+      totalEmployees,
+      totalRecords: rows.length,
+      statusTotals,
+      present,
+      absent,
+      attendanceRate: rows.length
+        ? Number(((present / rows.length) * 100).toFixed(2))
+        : 0,
+      totalWorkHours: Number(
+        rows
+          .reduce((sum, row) => sum + Number(row.totalHoursDecimal || 0), 0)
+          .toFixed(2),
+      ),
+      totalOtHours: Number(
+        rows
+          .reduce((sum, row) => sum + Number(row.otHoursDecimal || 0), 0)
+          .toFixed(2),
+      ),
+      rows: employeeRows,
+    };
+  }
+
   private async buildDayExportRows(
     companyId: string | undefined,
     date: string,
