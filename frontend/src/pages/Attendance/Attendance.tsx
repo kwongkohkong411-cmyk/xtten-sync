@@ -196,6 +196,13 @@ function toCsvCell(value: string) {
   return `"${escaped}"`;
 }
 
+function sanitizeFilePart(value: string) {
+  return value
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
   if (typeof error === "object" && error) {
     const typedError = error as ApiError;
@@ -215,6 +222,7 @@ export default function Attendance() {
   const [rosters, setRosters] = useState<RosterRecord[]>([]);
   const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(() => [dayjs().startOf("month"), dayjs().endOf("day")]);
   const [employeeFilter, setEmployeeFilter] = useState<string | undefined>(undefined);
+  const [teamFilter, setTeamFilter] = useState<string | undefined>(undefined);
   const [shiftDateFilter, setShiftDateFilter] = useState<dayjs.Dayjs | undefined>(() =>
     resolveShiftDateToday(),
   );
@@ -308,7 +316,7 @@ export default function Attendance() {
     }
   };
 
-  const adminRows = useMemo<AdminRow[]>(() => {
+  const allAdminRows = useMemo<AdminRow[]>(() => {
     const rosterMap = new Map<string, { shift: string; team: string }>();
     for (const roster of rosters) {
       const month = String(roster?.month || "");
@@ -319,7 +327,7 @@ export default function Attendance() {
       });
     }
 
-    const rows = events.map((e) => {
+    return events.map((e) => {
       const worked = Number(e.totalHoursDecimal ?? e.totalHours ?? 0);
       const workMonth = dayjs(e.workDate || e.checkIn || e.checkOut || new Date()).format("YYYY-MM");
       const rosterInfo = rosterMap.get(`${e.employeeId}:${workMonth}`);
@@ -348,19 +356,33 @@ export default function Attendance() {
         ruleSource: e.ruleSource || "-",
       };
     });
+  }, [events, rosters]);
 
-    const filteredByEmployee = employeeFilter ? rows.filter((row) => row.employeeId === employeeFilter) : rows;
-    if (!shiftDateFilter) return filteredByEmployee;
-    return filteredByEmployee.filter((row) => row.shiftDate === shiftDateFilter.format("YYYY-MM-DD"));
-  }, [events, rosters, employeeFilter, shiftDateFilter]);
+  const adminRows = useMemo<AdminRow[]>(() => {
+    const filteredByEmployee = employeeFilter
+      ? allAdminRows.filter((row) => row.employeeId === employeeFilter)
+      : allAdminRows;
+
+    const filteredByTeam = teamFilter
+      ? filteredByEmployee.filter((row) => row.team === teamFilter)
+      : filteredByEmployee;
+
+    if (!shiftDateFilter) return filteredByTeam;
+    return filteredByTeam.filter((row) => row.shiftDate === shiftDateFilter.format("YYYY-MM-DD"));
+  }, [allAdminRows, employeeFilter, teamFilter, shiftDateFilter]);
 
   const employeeOptions = useMemo(() => {
     const map = new Map<string, string>();
-    for (const e of events) {
-      map.set(e.employeeId, e.employee?.name || e.employeeId);
+    for (const row of allAdminRows) {
+      map.set(row.employeeId, row.employee || row.employeeId);
     }
     return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
-  }, [events]);
+  }, [allAdminRows]);
+
+  const teamOptions = useMemo(() => {
+    const teams = Array.from(new Set(allAdminRows.map((row) => row.team).filter((team) => team && team !== "-")));
+    return teams.map((team) => ({ value: team, label: team }));
+  }, [allAdminRows]);
 
   const scenarioResult = useMemo(() => {
     if (!scenarioEmployeeId) return null;
@@ -479,17 +501,30 @@ export default function Attendance() {
       .map((line) => line.map((cell) => toCsvCell(String(cell))).join(","))
       .join("\n");
 
+    const shiftDatePart = shiftDateFilter ? shiftDateFilter.format("YYYY-MM-DD") : "All";
+    const employeeLabel = employeeFilter
+      ? employeeOptions.find((option) => option.value === employeeFilter)?.label || employeeFilter
+      : undefined;
+    const filterParts: string[] = [];
+    if (teamFilter) filterParts.push(`Team-${sanitizeFilePart(teamFilter)}`);
+    if (employeeLabel) filterParts.push(`Employee-${sanitizeFilePart(employeeLabel)}`);
+    const filterPart = filterParts.length ? filterParts.join("_") : "All";
+    const exportTimePart = dayjs().format("YYYY-MM-DD-HHmm");
+    const fileName = shiftDatePart === "All" && filterPart === "All"
+      ? `XTTEN_Attendance_All_${exportTimePart}.csv`
+      : `XTTEN_Attendance_${shiftDatePart}_${filterPart}_${exportTimePart}.csv`;
+
     const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `attendance_export_${dayjs().format("YYYYMMDD_HHmmss")}.csv`;
+    anchor.download = fileName;
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
     message.success(`CSV exported: ${adminRows.length} row(s)`);
-  }, [adminRows]);
+  }, [adminRows, employeeFilter, employeeOptions, shiftDateFilter, teamFilter]);
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
@@ -588,6 +623,14 @@ export default function Attendance() {
                   <Button onClick={() => setShiftDateFilter(resolveShiftDateToday())}>Today</Button>
                   <Button onClick={() => setShiftDateFilter(undefined)}>Clear / All</Button>
                   <Button type="primary" onClick={handleExportCsv}>Export CSV</Button>
+                  <Select
+                    allowClear
+                    style={{ width: 220 }}
+                    placeholder="筛选团队"
+                    value={teamFilter}
+                    onChange={setTeamFilter}
+                    options={teamOptions}
+                  />
                   <Select
                     allowClear
                     style={{ width: 260 }}
