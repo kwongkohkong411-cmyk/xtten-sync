@@ -6,7 +6,7 @@ export interface Company {
 export interface User {
   id: string;
   name: string;
-  email: string;
+  email?: string;
   username: string;
   role: string;
   roleId?: string | null;

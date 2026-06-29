@@ -35,7 +35,6 @@ export default function UserModal({
       if (editingUser) {
         form.setFieldsValue({
           name: editingUser.name,
-          email: editingUser.email,
           username: editingUser.username,
           companyId: editingUser.companyId,
           roleId: editingUser.roleId,
@@ -58,7 +57,7 @@ export default function UserModal({
 
   return (
     <Modal
-      title={editingUser ? "Edit User" : "New User"}
+      title={editingUser ? "Edit Employee" : "New Employee"}
       open={open}
       onCancel={onCancel}
       onOk={handleOk}
@@ -66,7 +65,12 @@ export default function UserModal({
       okText={editingUser ? "Update" : "Create"}
       destroyOnHidden
     >
-      <Form form={form} layout="vertical" style={{ marginTop: 20 }}>
+      <Form
+        form={form}
+        layout="vertical"
+        style={{ marginTop: 20 }}
+        autoComplete="off"
+      >
         <Form.Item
           label="Name"
           name="name"
@@ -76,19 +80,11 @@ export default function UserModal({
         </Form.Item>
 
         <Form.Item
-          label="Email"
-          name="email"
-          rules={[{ required: true, message: "Please enter email" }]}
-        >
-          <Input placeholder="john@company.com" />
-        </Form.Item>
-
-        <Form.Item
           label="Username"
           name="username"
           rules={[{ required: true, message: "Please enter username" }]}
         >
-          <Input placeholder="john" />
+          <Input placeholder="john" autoComplete="new-username" />
         </Form.Item>
 
         {!editingUser && (
@@ -97,13 +93,19 @@ export default function UserModal({
             name="password"
             rules={[{ required: true, message: "Please enter password" }]}
           >
-            <Input.Password placeholder="Enter password" />
+            <Input.Password
+              placeholder="Enter password"
+              autoComplete="new-password"
+            />
           </Form.Item>
         )}
 
         {editingUser && (
           <Form.Item label="New Password" name="password">
-            <Input.Password placeholder="Leave blank to keep current password" />
+            <Input.Password
+              placeholder="Leave blank to keep current password"
+              autoComplete="new-password"
+            />
           </Form.Item>
         )}
 
@@ -119,12 +121,12 @@ export default function UserModal({
         </Form.Item>
 
         <Form.Item
-          label="Role"
+          label="Permission Assignment"
           name="roleId"
           rules={[{ required: true, message: "Please select role" }]}
         >
           <Select
-            placeholder="Select role"
+            placeholder="Select role/permission template"
             options={roles.map((role) => ({
               label: role.name,
               value: role.id,

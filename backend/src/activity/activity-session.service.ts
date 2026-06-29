@@ -455,19 +455,29 @@ export class ActivitySessionService extends BaseRbacService {
     actor: Actor | undefined,
     query: { date?: string; companyId?: string; employeeId?: string },
   ) {
-    const { companyId } = await this.assertCompanyScope(
+    const scope = await this.activityService.resolveActivityReadScope(
       actor,
       query.companyId,
-      true,
+      query.employeeId,
     );
     const { start, end, date } = this.dayRange(query.date);
 
+    if (scope.visibleEmployeeIds && scope.visibleEmployeeIds.length === 0) {
+      return { date, employees: [] };
+    }
+
+    const entityWhere = query.employeeId
+      ? { entityId: query.employeeId }
+      : scope.visibleEmployeeIds
+        ? { entityId: { in: scope.visibleEmployeeIds } }
+        : {};
+
     const rows = await this.prisma.tenantAuditLog.findMany({
       where: {
-        companyId: companyId as string,
+        companyId: scope.companyId,
         scope: 'ACTIVITY',
         createdAt: { gte: start, lte: end },
-        ...(query.employeeId ? { entityId: query.employeeId } : {}),
+        ...entityWhere,
       },
       orderBy: { createdAt: 'asc' },
       select: {
@@ -584,13 +594,27 @@ export class ActivitySessionService extends BaseRbacService {
     actor: Actor | undefined,
     query: { companyId?: string },
   ): Promise<Observable<{ data: unknown }>> {
-    const { companyId } = await this.assertCompanyScope(
+    const scope = await this.activityService.resolveActivityReadScope(
       actor,
       query.companyId,
-      true,
     );
+    const visibleEmployeeSet = scope.visibleEmployeeIds
+      ? new Set(scope.visibleEmployeeIds)
+      : null;
+
     return this.activityService.getEventStream().pipe(
-      filter((event) => event?.companyId === companyId),
+      filter((event) => {
+        if (event?.companyId !== scope.companyId) {
+          return false;
+        }
+
+        if (!visibleEmployeeSet) {
+          return true;
+        }
+
+        const employeeId = this.toText(event?.employeeId || event?.entityId);
+        return employeeId.length > 0 && visibleEmployeeSet.has(employeeId);
+      }),
       map((event) => {
         return {
           data: {

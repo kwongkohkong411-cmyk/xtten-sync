@@ -27,7 +27,7 @@ type UserUpsertBody = {
 };
 
 type UserCreateBody = {
-  email: string;
+  email?: string;
   username: string;
   password: string;
   name: string;

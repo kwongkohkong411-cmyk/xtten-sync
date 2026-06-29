@@ -76,19 +76,18 @@ export default function Users() {
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
       const keyword = search.toLowerCase();
+      const effectiveRole = user.roleRelation?.name || user.role || "";
 
       const matchSearch =
         user.name?.toLowerCase().includes(keyword) ||
-        user.email?.toLowerCase().includes(keyword) ||
         user.username?.toLowerCase().includes(keyword) ||
-        user.role?.toLowerCase().includes(keyword) ||
-        user.roleRelation?.name?.toLowerCase().includes(keyword);
+        effectiveRole.toLowerCase().includes(keyword);
 
       const matchCompany = companyFilter
         ? user.companyId === companyFilter
         : true;
 
-      const matchRole = roleFilter ? user.role === roleFilter : true;
+      const matchRole = roleFilter ? effectiveRole === roleFilter : true;
 
       return matchSearch && matchCompany && matchRole;
     });
@@ -110,7 +109,6 @@ export default function Users() {
 
       const payload = {
         name: values.name,
-        email: values.email,
         username: values.username,
         password: values.password || undefined,
         companyId: values.companyId || null,
@@ -120,17 +118,24 @@ export default function Users() {
 
       if (editingUser) {
         await updateUser(editingUser.id, payload);
-        messageApi.success("User updated successfully");
+        messageApi.success("Employee updated successfully");
       } else {
         await createUser(payload);
-        messageApi.success("User created successfully");
+        messageApi.success("Employee created successfully");
       }
 
       setModalOpen(false);
       setEditingUser(null);
       loadData();
     } catch (error) {
-      messageApi.error("Failed to save user");
+      const err = error as {
+        response?: { data?: { message?: string | string[] } };
+      };
+      const rawMessage = err?.response?.data?.message;
+      const messageText = Array.isArray(rawMessage)
+        ? rawMessage.join(", ")
+        : rawMessage || "Failed to save employee";
+      messageApi.error(messageText);
     } finally {
       setSaving(false);
     }
@@ -138,14 +143,14 @@ export default function Users() {
 
   const handleDelete = (user: User) => {
     Modal.confirm({
-      title: "Delete user?",
+      title: "Delete employee?",
       content: `Are you sure you want to delete ${user.name}?`,
       okText: "Delete",
       okType: "danger",
       cancelText: "Cancel",
       async onOk() {
         await deleteUser(user.id);
-        messageApi.success("User deleted successfully");
+        messageApi.success("Employee deleted successfully");
         loadData();
       },
     });
@@ -168,11 +173,11 @@ export default function Users() {
         >
           <div>
             <Typography.Title level={3} style={{ margin: 0 }}>
-              Users
+              Employees
             </Typography.Title>
 
             <Typography.Text type="secondary">
-              Manage users and permissions
+              Create employees and assign role permissions
             </Typography.Text>
           </div>
 
@@ -181,7 +186,7 @@ export default function Users() {
             icon={<PlusOutlined />}
             onClick={openCreateModal}
           >
-            New User
+            New Employee
           </Button>
         </div>
 
@@ -189,7 +194,7 @@ export default function Users() {
           <Input
             allowClear
             prefix={<SearchOutlined />}
-            placeholder="Search user..."
+            placeholder="Search employee..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: 320 }}
@@ -228,7 +233,7 @@ export default function Users() {
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
-            showTotal: (total) => `${total} users`,
+            showTotal: (total) => `${total} employees`,
           }}
         />
       </Card>

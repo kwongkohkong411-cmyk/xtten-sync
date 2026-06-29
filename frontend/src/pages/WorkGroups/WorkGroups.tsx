@@ -150,7 +150,7 @@ export default function WorkGroups() {
 
   const columns = [
     {
-      title: "Group",
+      title: "Team",
       key: "group",
       render: (_: any, record: any) => (
         <Space>
@@ -224,12 +224,12 @@ export default function WorkGroups() {
       title="Teams"
       extra={
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          New Group
+          New Team
         </Button>
       }
     >
       <Input.Search
-        placeholder="Search group, code or company"
+        placeholder="Search team, code or company"
         allowClear
         style={{ width: 320, marginBottom: 16 }}
         onChange={(e) => setSearch(e.target.value)}
@@ -268,11 +268,11 @@ export default function WorkGroups() {
           </Form.Item>
 
           <Form.Item
-            label="Group Name"
+            label="Team Name"
             name="name"
-            rules={[{ required: true, message: "Please enter group name" }]}
+            rules={[{ required: true, message: "Please enter team name" }]}
           >
-            <Input placeholder="A Group / B Group / Night Group" />
+            <Input placeholder="A Team / B Team / Night Team" />
           </Form.Item>
 
           <Form.Item label="Code" name="code">

@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "../pages/Login/Login";
 import MainLayout from "../layouts/MainLayout";
 
-import Dashboard from "../pages/Dashboard/Dashboard";
 import Companies from "../pages/Companies/Companies";
 import CompanyDetail from "../pages/Companies/CompanyDetail";
 import CompanySettings from "../pages/Companies/CompanySettings";
@@ -13,12 +12,7 @@ import Departments from "../pages/Departments/Departments";
 import DepartmentMembers from "../pages/Departments/DepartmentMembers";
 import Employees from "../pages/Employees/Employees";
 import EmployeeDetails from "../pages/Employees/EmployeeDetails";
-import Users from "../pages/Users/Users";
 import Roles from "../pages/Roles/Roles";
-import WorkGroups from "../pages/WorkGroups";
-import ShiftTemplates from "../pages/ShiftTemplates";
-import Rosters from "../pages/Rosters";
-import ShiftManagement from "../pages/Shift/ShiftManagement";
 import Attendance from "../pages/Attendance/Attendance";
 import Reports from "../pages/Reports/Reports";
 import ActivityMonitoring from "../pages/Activity/ActivityMonitoring";
@@ -28,8 +22,12 @@ import HolidaySettings from "../pages/HolidaySettings";
 import Permissions from "../pages/Permissions";
 import TenantAuditLogs from "../pages/AuditLogs/TenantAuditLogs";
 import AgentDownloads from "../pages/Agent/AgentDownloads";
+import Users from "../pages/Users/Users";
 
 import { getCurrentUser, hasPermission } from "../utils/auth";
+import { canAccessAudience, getAppShellRoutes, type NavAudience } from "../navigation/appShellConfig";
+
+const appShellRoutes = getAppShellRoutes();
 
 function hasFullSession() {
   const token = localStorage.getItem("xtten_token");
@@ -49,18 +47,26 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return children;
 }
 
-function PermissionRoute({ children, permission }: { children: ReactNode; permission?: string }) {
+function AccessRoute({
+  children,
+  permission,
+  audience = "all",
+}: {
+  children: ReactNode;
+  permission?: string | null;
+  audience?: NavAudience;
+}) {
   const currentUser = getCurrentUser();
 
   if (!currentUser) {
     return <Navigate to="/" replace />;
   }
 
-  if (!permission) {
-    return children;
+  if (!canAccessAudience(currentUser, audience)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
-  if (!hasPermission(permission)) {
+  if (permission && !hasPermission(permission)) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -96,347 +102,214 @@ export default function Router() {
             </ProtectedRoute>
           }
         >
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/dashboard/overview" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard/analytics" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard/realtime" element={<Navigate to="/dashboard" replace />} />
+          {appShellRoutes.map((route) => (
+            <Route
+              key={route.path}
+              path={route.path}
+              element={
+                <AccessRoute permission={route.required} audience={route.audience}>
+                  {route.element}
+                </AccessRoute>
+              }
+            />
+          ))}
+
           <Route
             path="/companies"
             element={
-              <PermissionRoute permission="organization:view">
+              <AccessRoute permission="organization:view">
                 <Companies />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/companies/:id"
             element={
-              <PermissionRoute permission="organization:view">
+              <AccessRoute permission="organization:view">
                 <CompanyDetail />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/companies/settings"
             element={
-              <PermissionRoute permission="organization:view">
+              <AccessRoute permission="organization:view">
                 <CompanySettings />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/companies/multi-tenant"
             element={
-              <PermissionRoute permission="organization:view">
+              <AccessRoute permission="organization:view">
                 <MultiTenantConfig />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/departments"
             element={
-              <PermissionRoute permission="teams:view">
+              <AccessRoute permission="teams:view">
                 <Departments />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/departments/members"
             element={
-              <PermissionRoute permission="teams:view">
+              <AccessRoute permission="teams:view">
                 <DepartmentMembers />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/employees"
             element={
-              <PermissionRoute permission="users:view">
+              <AccessRoute permission="users:view">
                 <Employees />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/employees/add"
             element={
-              <PermissionRoute permission="users:create">
+              <AccessRoute permission="users:create">
                 <Employees />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/employees/:id"
             element={
-              <PermissionRoute permission="users:view">
+              <AccessRoute permission="users:view">
                 <EmployeeDetails />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/users"
-            element={
-              <PermissionRoute permission="users:view">
-                <Users />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/roles"
-            element={
-              <PermissionRoute permission="roles:view">
-                <Roles />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/shift"
-            element={
-              <PermissionRoute permission="shift:view">
-                <ShiftManagement />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/work-groups"
-            element={
-              <PermissionRoute permission="shift:view">
-                <WorkGroups />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/shift-templates"
-            element={
-              <PermissionRoute permission="shift:view">
-                <ShiftTemplates />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/rosters"
-            element={
-              <PermissionRoute permission="shift:view">
-                <Rosters />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/attendance"
             element={
-              <PermissionRoute permission="attendance:view">
+              <AccessRoute permission="attendance:view">
                 <Attendance />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/attendance/records"
             element={
-              <PermissionRoute permission="attendance:view">
+              <AccessRoute permission="attendance:view">
                 <Attendance />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/attendance/calendar"
-            element={
-              <PermissionRoute permission="attendance:view">
-                <Attendance />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/attendance/report"
-            element={
-              <PermissionRoute permission="attendance:view">
-                <Attendance />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/leave-requests"
             element={
-              <PermissionRoute permission="leave:view">
+              <AccessRoute permission="leave:view">
                 <Leaves />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/leave-settings"
             element={
-              <PermissionRoute permission="leave:view_settings">
+              <AccessRoute permission="leave:view_settings">
                 <Leaves />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/holiday-settings"
             element={
-              <PermissionRoute permission="holiday:view">
+              <AccessRoute permission="holiday:view">
                 <HolidaySettings />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/permissions"
             element={
-              <PermissionRoute permission="roles:view">
+              <AccessRoute permission="roles:view">
                 <Permissions />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/agent/download"
             element={
-              <PermissionRoute permission="system:admin">
+              <AccessRoute permission="system:admin" audience="superAdmin">
                 <AgentDownloads />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/control-plane"
             element={
-              <PermissionRoute permission="system:admin">
+              <AccessRoute permission="system:admin" audience="superAdmin">
                 <ControlPlaneDashboard />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/reports"
             element={
-              <PermissionRoute permission="report:view">
+              <AccessRoute permission="report:view">
                 <Reports />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/reports/daily"
-            element={
-              <PermissionRoute permission="report:view">
-                <Reports />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/reports/monthly"
-            element={
-              <PermissionRoute permission="report:view">
-                <Reports />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/reports/export"
-            element={
-              <PermissionRoute permission="report:export">
-                <Reports />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
 
           <Route
             path="/activity"
             element={
-              <PermissionRoute permission="activity:view">
-                <Navigate to="/activity/screenshots" replace />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/activity/screenshots"
-            element={
-              <PermissionRoute permission="activity:view">
+              <AccessRoute permission="activity:view">
                 <ActivityMonitoring view="screenshots" />
-              </PermissionRoute>
-            }
-          />
-
-          {/* Backward compatibility for old activity routes */}
-          <Route
-            path="/activity/live"
-            element={<Navigate to="/activity/screenshots" replace />}
-          />
-          <Route
-            path="/activity/timeline"
-            element={<Navigate to="/activity/screenshots" replace />}
-          />
-          <Route
-            path="/activity/app-usage"
-            element={
-              <PermissionRoute permission="activity:view">
-                <Navigate to="/activity/screenshots" replace />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/activity/website-tracking"
-            element={
-              <PermissionRoute permission="activity:view">
-                <Navigate to="/activity/screenshots" replace />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/activity/input-stats"
-            element={
-              <PermissionRoute permission="activity:view">
-                <Navigate to="/activity/screenshots" replace />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
 
           <Route
             path="/roles/assign"
             element={
-              <PermissionRoute permission="roles:manage">
+              <AccessRoute permission="roles:manage">
                 <Roles />
-              </PermissionRoute>
-            }
-          />
-
-          <Route
-            path="/settings/general"
-            element={
-              <PermissionRoute permission="system:admin">
-                <Navigate to="/companies/settings" replace />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/settings/notifications"
-            element={
-              <PermissionRoute permission="system:admin">
-                <Navigate to="/companies/settings" replace />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/settings/api-keys"
-            element={
-              <PermissionRoute permission="system:admin">
-                <Navigate to="/companies/settings" replace />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
 
           <Route
             path="/logs/login"
             element={
-              <PermissionRoute permission="system:admin">
+              <AccessRoute permission="system:admin" audience="superAdmin">
                 <TenantAuditLogs initialScope="CORE" />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
           <Route
             path="/logs/actions"
             element={
-              <PermissionRoute permission="system:admin">
+              <AccessRoute permission="system:admin" audience="superAdmin">
                 <TenantAuditLogs initialScope="RUNTIME" />
-              </PermissionRoute>
+              </AccessRoute>
             }
           />
 
-          <Route path="/me/profile" element={<Navigate to="/users" replace />} />
-          <Route path="/me/change-password" element={<Navigate to="/users" replace />} />
+          <Route
+            path="/me/profile"
+            element={
+              <AccessRoute permission="profile:view">
+                <Navigate to="/profile" replace />
+              </AccessRoute>
+            }
+          />
+          <Route
+            path="/me/change-password"
+            element={
+              <AccessRoute permission="profile:view">
+                <Navigate to="/profile" replace />
+              </AccessRoute>
+            }
+          />
         </Route>
 
         {/* =========================

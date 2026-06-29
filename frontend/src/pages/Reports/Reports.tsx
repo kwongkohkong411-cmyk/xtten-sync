@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Col, DatePicker, Row, Select, Space, Table, Tabs, Tag, Typography, message } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   downloadDayReport,
   downloadMonthReport,
@@ -42,7 +43,16 @@ function statusColor(status: string) {
 }
 
 export default function Reports() {
-  const [tab, setTab] = useState<ReportTabKey>('daily');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const resolveTabByPath = useCallback((pathname: string): ReportTabKey => {
+    if (pathname.startsWith('/reports/monthly')) return 'monthly';
+    if (pathname.startsWith('/reports/summary') || pathname === '/reports') return 'summary';
+    return 'daily';
+  }, []);
+
+  const [tab, setTab] = useState<ReportTabKey>(() => resolveTabByPath(location.pathname));
   const [loading, setLoading] = useState(false);
 
   const [dailyDate, setDailyDate] = useState<Dayjs>(dayjs());
@@ -58,6 +68,26 @@ export default function Reports() {
   const [summaryTeam, setSummaryTeam] = useState<string | undefined>(undefined);
   const [summaryEmployee, setSummaryEmployee] = useState<string | undefined>(undefined);
   const [summaryStatus, setSummaryStatus] = useState<SummaryStatusFilter | undefined>(undefined);
+
+  useEffect(() => {
+    const nextTab = resolveTabByPath(location.pathname);
+    setTab((prev) => (prev === nextTab ? prev : nextTab));
+  }, [location.pathname, resolveTabByPath]);
+
+  const handleTabChange = (key: string) => {
+    const nextTab = key as ReportTabKey;
+    setTab(nextTab);
+
+    if (nextTab === 'daily') {
+      navigate('/reports/daily');
+      return;
+    }
+    if (nextTab === 'monthly') {
+      navigate('/reports/monthly');
+      return;
+    }
+    navigate('/reports/summary');
+  };
 
   const loadDaily = useCallback(async () => {
     setLoading(true);
@@ -304,7 +334,7 @@ export default function Reports() {
 
       <Tabs
         activeKey={tab}
-        onChange={(key) => setTab(key as ReportTabKey)}
+        onChange={handleTabChange}
         items={[
           { key: 'daily', label: 'Daily Report' },
           { key: 'monthly', label: 'Monthly Report' },

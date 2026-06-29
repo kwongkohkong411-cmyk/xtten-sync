@@ -14,7 +14,7 @@ export function getUserColumns(
 ): ColumnsType<User> {
   return [
     {
-      title: "User",
+      title: "Employee",
       key: "user",
       render: (_, record) => (
         <Space>
@@ -29,16 +29,13 @@ export function getUserColumns(
       ),
     },
     {
-      title: "Email",
-      dataIndex: "email",
-    },
-    {
       title: "Company",
       render: (_, record) => record.company?.name || "-",
     },
     {
       title: "Role",
-      dataIndex: "role",
+      key: "role",
+      render: (_, record) => record.roleRelation?.name || record.role || "-",
     },
     {
       title: "Status",

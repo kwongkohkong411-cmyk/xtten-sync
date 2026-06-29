@@ -1,11 +1,11 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import bcrypt from 'bcrypt';
 import { BaseRbacService } from '../auth/base-rbac.service';
 import { Actor, RbacCoreService } from '../auth/rbac-core.service';
 
 type UserCreateInput = {
-  email: string;
+  email?: string;
   username: string;
   password: string;
   name: string;
@@ -41,8 +41,30 @@ export class UsersService extends BaseRbacService {
     super(prisma, rbacCore);
   }
 
+  private uniqueUsersById<T extends { id: string }>(users: T[]) {
+    const seen = new Set<string>();
+    return users.filter((user) => {
+      if (seen.has(user.id)) {
+        return false;
+      }
+      seen.add(user.id);
+      return true;
+    });
+  }
+
   private normalizeUsername(username: string | null | undefined) {
     return (username || '').trim().toLowerCase();
+  }
+
+  private buildFallbackEmail(username: string) {
+    const normalized = this.normalizeUsername(username);
+    if (!normalized) {
+      return `employee.${Date.now()}@xtten.local`;
+    }
+    if (normalized.includes('@')) {
+      return normalized;
+    }
+    return `${normalized}@xtten.local`;
   }
 
   private isOwnerUsername(username: string | null | undefined) {
@@ -132,8 +154,9 @@ export class UsersService extends BaseRbacService {
   async findAll(actor?: Actor) {
     const where = await this.rbacCore.applyScopeToQuery(actor, {});
 
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       where,
+      distinct: ['id'],
       orderBy: {
         createdAt: 'desc',
       },
@@ -147,14 +170,17 @@ export class UsersService extends BaseRbacService {
         },
       },
     });
+
+    return this.uniqueUsersById(users);
   }
 
   async findByCompany(companyId: string, actor?: Actor) {
     const { companyId: scopedCompanyId } =
       await this.rbacCore.assertCompanyScope(actor, companyId);
 
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       where: { companyId: scopedCompanyId },
+      distinct: ['id'],
       orderBy: { createdAt: 'desc' },
       include: {
         company: true,
@@ -166,6 +192,8 @@ export class UsersService extends BaseRbacService {
         },
       },
     });
+
+    return this.uniqueUsersById(users);
   }
 
   private async resolveRoleName(roleId?: string, fallback = 'EMPLOYEE') {
@@ -235,7 +263,85 @@ export class UsersService extends BaseRbacService {
     }
   }
 
+  private assertReservedOwnerUsernameMutation(params: {
+    nextUsername?: string | null;
+    currentUsername?: string | null;
+  }) {
+    const next = this.normalizeUsername(params.nextUsername);
+    if (!next || next !== this.superAdminOwnerUsername) {
+      return;
+    }
+
+    const current = this.normalizeUsername(params.currentUsername);
+    if (current === this.superAdminOwnerUsername) {
+      return;
+    }
+
+    throw new ForbiddenException(
+      `Username ${this.superAdminOwnerUsername} is reserved for designated SUPER_ADMIN owner`,
+    );
+  }
+
+  private assertOwnerRoleUnchanged(params: {
+    currentUsername?: string | null;
+    currentRoleId?: string | null;
+    nextRoleId?: string | null;
+  }) {
+    if (!this.isOwnerUsername(params.currentUsername)) {
+      return;
+    }
+
+    if (
+      params.nextRoleId !== undefined &&
+      (params.currentRoleId || null) !== (params.nextRoleId || null)
+    ) {
+      throw new ForbiddenException(
+        'Designated SUPER_ADMIN owner role/permission assignment cannot be changed',
+      );
+    }
+  }
+
+  private async assertUsernameAvailable(
+    username: string,
+    excludeUserId?: string,
+  ) {
+    const normalized = this.normalizeUsername(username);
+    if (!normalized) {
+      throw new BadRequestException('Username is required');
+    }
+
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        username: {
+          equals: normalized,
+          mode: 'insensitive',
+        },
+        ...(excludeUserId
+          ? {
+              id: {
+                not: excludeUserId,
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Username already exists');
+    }
+  }
+
   async create(data: UserCreateInput, actor?: Actor) {
+    const normalizedUsername = this.normalizeUsername(data.username);
+    await this.assertUsernameAvailable(normalizedUsername);
+
+    this.assertReservedOwnerUsernameMutation({
+      nextUsername: normalizedUsername,
+    });
+
     if (data.companyId) {
       const { companyId } = await this.rbacCore.assertCompanyScope(
         actor,
@@ -255,12 +361,17 @@ export class UsersService extends BaseRbacService {
       actor,
       'EMPLOYEE',
     );
-    this.assertSuperAdminOwnershipRule(data.username, roleAssignment.roleName);
+    this.assertSuperAdminOwnershipRule(
+      normalizedUsername,
+      roleAssignment.roleName,
+    );
+    const resolvedEmail =
+      data.email?.trim() || this.buildFallbackEmail(normalizedUsername);
 
     return this.prisma.user.create({
       data: {
-        email: data.email,
-        username: data.username,
+        email: resolvedEmail,
+        username: normalizedUsername,
         password: hashedPassword,
         name: data.name,
         role: roleAssignment.roleName,
@@ -293,6 +404,15 @@ export class UsersService extends BaseRbacService {
 
     const current = await this.getUserIdentity(id);
 
+    const normalizedUsername =
+      typeof data.username === 'string'
+        ? this.normalizeUsername(data.username)
+        : undefined;
+
+    if (normalizedUsername) {
+      await this.assertUsernameAvailable(normalizedUsername, id);
+    }
+
     const roleUpdate: RoleAssignment = Object.prototype.hasOwnProperty.call(
       data,
       'roleId',
@@ -302,6 +422,16 @@ export class UsersService extends BaseRbacService {
           roleId: current?.roleId || null,
           roleName: current?.role || 'EMPLOYEE',
         };
+
+    this.assertReservedOwnerUsernameMutation({
+      nextUsername: normalizedUsername,
+      currentUsername: current?.username,
+    });
+    this.assertOwnerRoleUnchanged({
+      currentUsername: current?.username,
+      currentRoleId: current?.roleId,
+      nextRoleId: roleUpdate.roleId,
+    });
 
     this.assertSuperAdminOwnershipRule(current?.username, roleUpdate.roleName);
     this.assertOwnerAccountWritePolicy({
@@ -322,7 +452,7 @@ export class UsersService extends BaseRbacService {
       password?: string;
     } = {
       email: data.email,
-      username: data.username,
+      username: normalizedUsername,
       name: data.name,
       role: roleUpdate.roleName,
       roleId: roleUpdate.roleId,
@@ -382,7 +512,7 @@ export class UsersService extends BaseRbacService {
 
     const target = await this.prisma.user.findUnique({
       where: { id },
-      select: { username: true },
+      select: { username: true, roleId: true },
     });
 
     const roleAssignment = await this.resolveRoleAssignment(
@@ -394,6 +524,11 @@ export class UsersService extends BaseRbacService {
       target?.username,
       roleAssignment.roleName,
     );
+    this.assertOwnerRoleUnchanged({
+      currentUsername: target?.username,
+      currentRoleId: target?.roleId,
+      nextRoleId: roleAssignment.roleId,
+    });
 
     return this.prisma.user.update({
       where: { id },

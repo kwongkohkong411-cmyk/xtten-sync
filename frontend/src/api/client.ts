@@ -4,8 +4,25 @@ const resolveApiBaseUrl = () => {
   const envBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
   if (envBaseUrl) return envBaseUrl;
 
+  const runtimeBaseUrl = localStorage.getItem("xtten_api_base_url");
+  if (runtimeBaseUrl) return runtimeBaseUrl;
+
   const hostname = window.location.hostname || "localhost";
   const protocol = window.location.protocol === "https:" ? "https" : "http";
+
+  const isLocalLikeHost =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+
+  // In dev, when frontend is opened by LAN/private IP, backend is often bound on localhost only.
+  if (isLocalLikeHost) {
+    return `${protocol}://localhost:3000`;
+  }
+
   return `${protocol}://${hostname}:3000`;
 };
 

@@ -158,7 +158,7 @@ export default function Leaves() {
   }, [loadLeaves, loadUsers]);
 
   useEffect(() => {
-    if (location.pathname.startsWith('/leave-settings')) {
+    if (location.pathname.startsWith('/leave-settings') || location.pathname.startsWith('/leave/settings')) {
       setRootTab('settings');
       void loadLeaveSettings();
       return;
@@ -393,7 +393,7 @@ export default function Leaves() {
               type='primary'
               icon={<PlusOutlined />}
               onClick={() => {
-                navigate('/leave-requests');
+                navigate('/leave/apply');
               }}
             >
               Apply Leave
@@ -405,7 +405,7 @@ export default function Leaves() {
       <Card style={{ marginBottom: 16, borderRadius: 16 }}>
         <Tabs
           activeKey={rootTab}
-          onChange={(key) => navigate(key === 'settings' ? '/leave-settings' : '/leave-requests')}
+          onChange={(key) => navigate(key === 'settings' ? '/leave/settings' : '/leave/requests')}
           items={[
             { key: 'requests', label: 'Leave Request' },
             { key: 'settings', label: 'Leave Settings' },

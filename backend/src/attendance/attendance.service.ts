@@ -4,11 +4,13 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventLogService } from '../events/event-log.service';
 import { EMPLOYEE_EVENT_ACTIONS } from '../events/event-actions';
 import { EventControlPlaneService } from '../events/event-control-plane.service';
+import { RbacCoreService } from '../auth/rbac-core.service';
 import { ATTENDANCE_RULE } from './attendance-rule';
 import { Prisma } from '@prisma/client';
 
@@ -70,7 +72,77 @@ export class AttendanceService {
     private prisma: PrismaService,
     private readonly eventLogService: EventLogService,
     private readonly controlPlane: EventControlPlaneService,
+    private readonly rbacCore: RbacCoreService,
   ) {}
+
+  private async resolveAttendanceReadScope(user: AttendanceRequestUser) {
+    const context = await this.rbacCore.resolveActorContext({
+      id: user.id,
+      role: user.role,
+      companyId: user.companyId,
+    });
+
+    if (context.roleName === 'SUPER_ADMIN') {
+      return {
+        context,
+        companyId: undefined as string | undefined,
+        visibleEmployeeIds: null as string[] | null,
+      };
+    }
+
+    const companyId = context.companyId || (await this.getEmployee(user.id)).companyId;
+    const selfEmployee = await this.prisma.employee.findFirst({
+      where: {
+        userId: context.userId,
+        companyId,
+      },
+      select: { id: true },
+    });
+    const selfEmployeeId = selfEmployee?.id;
+
+    if (context.roleName === 'EMPLOYEE') {
+      return {
+        context,
+        companyId,
+        visibleEmployeeIds: selfEmployeeId ? [selfEmployeeId] : [],
+      };
+    }
+
+    if (context.roleName === 'TEAM_LEAD') {
+      const where: Prisma.EmployeeWhereInput = {
+        companyId,
+        OR: [
+          { userId: context.userId },
+          ...(context.managedDepartmentIds.length
+            ? [
+                {
+                  departmentId: {
+                    in: context.managedDepartmentIds,
+                  },
+                },
+              ]
+            : []),
+        ],
+      };
+
+      const teamEmployees = await this.prisma.employee.findMany({
+        where,
+        select: { id: true },
+      });
+
+      return {
+        context,
+        companyId,
+        visibleEmployeeIds: teamEmployees.map((row) => row.id),
+      };
+    }
+
+    return {
+      context,
+      companyId,
+      visibleEmployeeIds: null as string[] | null,
+    };
+  }
 
   private getToday() {
     const d = new Date();
@@ -636,7 +708,13 @@ export class AttendanceService {
 
     const user = this.requireUser(req);
 
-    if (user.role !== 'SUPER_ADMIN') {
+    const context = await this.rbacCore.resolveActorContext({
+      id: user.id,
+      role: user.role,
+      companyId: user.companyId,
+    });
+
+    if (context.roleName !== 'SUPER_ADMIN') {
       if (user.companyId) {
         where.companyId = user.companyId;
       } else {
@@ -1035,17 +1113,23 @@ export class AttendanceService {
   // =========================
   async history(req: AttendanceRequest) {
     const user = this.requireUser(req);
+    const scope = await this.resolveAttendanceReadScope(user);
 
-    if (user.role === 'SUPER_ADMIN') {
+    if (scope.context.roleName === 'SUPER_ADMIN') {
       return this.prisma.attendance.findMany({
         orderBy: { createdAt: 'desc' },
       });
     }
 
-    const employee = await this.getEmployee(user.id);
+    if (!scope.visibleEmployeeIds || scope.visibleEmployeeIds.length === 0) {
+      return [];
+    }
 
     return this.prisma.attendance.findMany({
-      where: { employeeId: employee.id },
+      where: {
+        companyId: scope.companyId,
+        employeeId: { in: scope.visibleEmployeeIds },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -1072,10 +1156,7 @@ export class AttendanceService {
       },
     );
 
-    const visibleCompanyId =
-      user.role === 'SUPER_ADMIN'
-        ? undefined
-        : user.companyId || (await this.getEmployee(user.id)).companyId;
+    const scope = await this.resolveAttendanceReadScope(user);
 
     const baseWhere: Prisma.AttendanceWhereInput = {
       date: {
@@ -1084,12 +1165,35 @@ export class AttendanceService {
       },
     };
 
-    if (visibleCompanyId) {
-      baseWhere.companyId = visibleCompanyId;
+    if (scope.companyId) {
+      baseWhere.companyId = scope.companyId;
     }
 
     if (query.employeeId) {
+      if (
+        scope.visibleEmployeeIds &&
+        !scope.visibleEmployeeIds.includes(query.employeeId)
+      ) {
+        throw new ForbiddenException('You can only access attendance in your own scope');
+      }
       baseWhere.employeeId = query.employeeId;
+    } else if (scope.visibleEmployeeIds) {
+      if (scope.visibleEmployeeIds.length === 0) {
+        return {
+          meta: {
+            startDate,
+            endDate,
+            lateThreshold: ATTENDANCE_RULE.LATE_THRESHOLD,
+            lateRule: 'SHIFT_TEMPLATE_START_TIME_PLUS_LATE_AFTER_OR_DEFAULT',
+            earlyLeaveRule: 'SHIFT_TEMPLATE_END_TIME_WITH_EARLY_LEAVE_TOLERANCE',
+            workDateStrategy: ATTENDANCE_RULE.WORK_DATE_STRATEGY,
+          },
+          events: [],
+        };
+      }
+      baseWhere.employeeId = {
+        in: scope.visibleEmployeeIds,
+      };
     }
 
     const rows = await this.prisma.attendance.findMany({
@@ -1181,8 +1285,12 @@ export class AttendanceService {
     );
 
     const leaveWhere: Prisma.LeaveWhereInput = {
-      ...(visibleCompanyId ? { companyId: visibleCompanyId } : {}),
-      ...(query.employeeId ? { employeeId: query.employeeId } : {}),
+      ...(scope.companyId ? { companyId: scope.companyId } : {}),
+      ...(query.employeeId
+        ? { employeeId: query.employeeId }
+        : scope.visibleEmployeeIds
+          ? { employeeId: { in: scope.visibleEmployeeIds } }
+          : {}),
       status: 'APPROVED',
       startDate: { lte: endDate },
       endDate: { gte: startDate },
@@ -1247,7 +1355,7 @@ export class AttendanceService {
       }
     }
 
-    const companyIdForHoliday: string | undefined = visibleCompanyId;
+    const companyIdForHoliday: string | undefined = scope.companyId;
     if (companyIdForHoliday) {
       const company = await this.prisma.company.findUnique({
         where: { id: companyIdForHoliday },

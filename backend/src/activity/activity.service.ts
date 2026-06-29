@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -136,6 +137,77 @@ export class ActivityService
     end.setHours(23, 59, 59, 999);
     const date = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
     return { start, end, date };
+  }
+
+  async resolveActivityReadScope(
+    actor: Actor | undefined,
+    requestedCompanyId?: string,
+    requestedEmployeeId?: string,
+  ) {
+    const { companyId } = await this.assertCompanyScope(
+      actor,
+      requestedCompanyId,
+      true,
+    );
+    const context = await this.resolveActorContext(actor);
+
+    if (context.roleName === 'SUPER_ADMIN') {
+      return {
+        companyId: companyId as string,
+        visibleEmployeeIds: null as string[] | null,
+      };
+    }
+
+    if (!companyId) {
+      throw new ForbiddenException('No company scope in user context');
+    }
+
+    const selfEmployee = await this.prisma.employee.findFirst({
+      where: {
+        userId: context.userId,
+        companyId,
+      },
+      select: { id: true },
+    });
+
+    let visibleEmployeeIds: string[] | null = null;
+
+    if (context.roleName === 'EMPLOYEE') {
+      visibleEmployeeIds = selfEmployee?.id ? [selfEmployee.id] : [];
+    } else if (context.roleName === 'TEAM_LEAD') {
+      const teamEmployees = await this.prisma.employee.findMany({
+        where: {
+          companyId,
+          OR: [
+            { userId: context.userId },
+            ...(context.managedDepartmentIds.length
+              ? [
+                  {
+                    departmentId: {
+                      in: context.managedDepartmentIds,
+                    },
+                  },
+                ]
+              : []),
+          ],
+        },
+        select: { id: true },
+      });
+      visibleEmployeeIds = teamEmployees.map((row) => row.id);
+    }
+
+    if (
+      requestedEmployeeId &&
+      visibleEmployeeIds &&
+      !visibleEmployeeIds.includes(requestedEmployeeId)
+    ) {
+      throw new ForbiddenException('You can only access activity in your own scope');
+    }
+
+    return {
+      companyId,
+      visibleEmployeeIds,
+    };
   }
 
   private encodeScreenshotCursor(createdAt: Date, id: string) {
@@ -843,21 +915,27 @@ export class ActivityService
     actor: Actor | undefined,
     query: { date?: string; companyId?: string; limit?: number },
   ) {
-    const { companyId } = await this.assertCompanyScope(
+    const scope = await this.resolveActivityReadScope(
       actor,
       query.companyId,
-      true,
     );
     const { start, end, date } = this.dayRange(query.date);
 
+    if (scope.visibleEmployeeIds && scope.visibleEmployeeIds.length === 0) {
+      return { date, items: [] };
+    }
+
     const rows = await this.prisma.tenantAuditLog.findMany({
       where: {
-        companyId: companyId as string,
+        companyId: scope.companyId,
         scope: 'ACTIVITY',
         createdAt: {
           gte: start,
           lte: end,
         },
+        ...(scope.visibleEmployeeIds
+          ? { entityId: { in: scope.visibleEmployeeIds } }
+          : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(Number(query.limit || 50), 1), 200),
@@ -886,22 +964,28 @@ export class ActivityService
     actor: Actor | undefined,
     query: { date?: string; companyId?: string },
   ) {
-    const { companyId } = await this.assertCompanyScope(
+    const scope = await this.resolveActivityReadScope(
       actor,
       query.companyId,
-      true,
     );
     const { start, end, date } = this.dayRange(query.date);
 
+    if (scope.visibleEmployeeIds && scope.visibleEmployeeIds.length === 0) {
+      return { date, apps: [] };
+    }
+
     const rows = await this.prisma.tenantAuditLog.findMany({
       where: {
-        companyId: companyId as string,
+        companyId: scope.companyId,
         scope: 'ACTIVITY',
         action: 'ACTIVITY_WINDOW',
         createdAt: {
           gte: start,
           lte: end,
         },
+        ...(scope.visibleEmployeeIds
+          ? { entityId: { in: scope.visibleEmployeeIds } }
+          : {}),
       },
       select: { afterData: true },
     });
@@ -929,22 +1013,28 @@ export class ActivityService
     actor: Actor | undefined,
     query: { date?: string; companyId?: string },
   ) {
-    const { companyId } = await this.assertCompanyScope(
+    const scope = await this.resolveActivityReadScope(
       actor,
       query.companyId,
-      true,
     );
     const { start, end, date } = this.dayRange(query.date);
 
+    if (scope.visibleEmployeeIds && scope.visibleEmployeeIds.length === 0) {
+      return { date, websites: [] };
+    }
+
     const rows = await this.prisma.tenantAuditLog.findMany({
       where: {
-        companyId: companyId as string,
+        companyId: scope.companyId,
         scope: 'ACTIVITY',
         action: 'ACTIVITY_WINDOW',
         createdAt: {
           gte: start,
           lte: end,
         },
+        ...(scope.visibleEmployeeIds
+          ? { entityId: { in: scope.visibleEmployeeIds } }
+          : {}),
       },
       select: { afterData: true },
     });
@@ -983,14 +1073,22 @@ export class ActivityService
       cursor?: string;
     },
   ) {
-    const { companyId } = await this.assertCompanyScope(
+    const scope = await this.resolveActivityReadScope(
       actor,
       query.companyId,
-      true,
     );
     const { start, end, date } = this.dayRange(query.date);
     const limit = Math.min(Math.max(Number(query.limit || 60), 1), 120);
     const parsedCursor = this.decodeScreenshotCursor(query.cursor);
+
+    if (scope.visibleEmployeeIds && scope.visibleEmployeeIds.length === 0) {
+      return {
+        date,
+        screenshots: [],
+        nextCursor: null,
+        hasMore: false,
+      };
+    }
 
     const cursorWhere = parsedCursor
       ? {
@@ -1006,13 +1104,16 @@ export class ActivityService
 
     const rows = await this.prisma.tenantAuditLog.findMany({
       where: {
-        companyId: companyId as string,
+        companyId: scope.companyId,
         scope: 'ACTIVITY',
         action: 'ACTIVITY_SCREENSHOT',
         createdAt: {
           gte: start,
           lte: end,
         },
+        ...(scope.visibleEmployeeIds
+          ? { entityId: { in: scope.visibleEmployeeIds } }
+          : {}),
         ...cursorWhere,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -1039,7 +1140,7 @@ export class ActivityService
     const employees = employeeIds.length
       ? await this.prisma.employee.findMany({
           where: {
-            companyId: companyId as string,
+            companyId: scope.companyId,
             id: {
               in: employeeIds,
             },
@@ -1112,22 +1213,33 @@ export class ActivityService
     actor: Actor | undefined,
     query: { date?: string; companyId?: string },
   ) {
-    const { companyId } = await this.assertCompanyScope(
+    const scope = await this.resolveActivityReadScope(
       actor,
       query.companyId,
-      true,
     );
     const { start, end, date } = this.dayRange(query.date);
 
+    if (scope.visibleEmployeeIds && scope.visibleEmployeeIds.length === 0) {
+      return {
+        date,
+        totalKeyboardCount: 0,
+        totalMouseCount: 0,
+        employees: [],
+      };
+    }
+
     const rows = await this.prisma.tenantAuditLog.findMany({
       where: {
-        companyId: companyId as string,
+        companyId: scope.companyId,
         scope: 'ACTIVITY',
         action: 'ACTIVITY_INPUT',
         createdAt: {
           gte: start,
           lte: end,
         },
+        ...(scope.visibleEmployeeIds
+          ? { entityId: { in: scope.visibleEmployeeIds } }
+          : {}),
       },
       select: {
         entityId: true,

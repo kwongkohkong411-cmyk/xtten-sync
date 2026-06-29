@@ -10,21 +10,65 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
     title: "Dashboard",
     subtitle: "Real-time overview",
   },
+  "/organization/companies": {
+    title: "Organization",
+    subtitle: "Manage Companies",
+  },
   "/companies": {
     title: "Companies",
     subtitle: "Manage organizations",
+  },
+  "/teams": {
+    title: "Teams",
+    subtitle: "Team directory",
   },
   "/departments": {
     title: "Departments",
     subtitle: "Manage departments",
   },
+  "/attendance/clock": {
+    title: "Attendance",
+    subtitle: "Clock In / Out",
+  },
+  "/attendance/calendar": {
+    title: "Attendance",
+    subtitle: "Attendance Calendar",
+  },
+  "/attendance/report": {
+    title: "Attendance",
+    subtitle: "Work Hours Report",
+  },
   "/attendance": {
     title: "Attendance",
     subtitle: "Clock In and Attendance",
   },
+  "/shift/templates": {
+    title: "Shift",
+    subtitle: "Shift Templates",
+  },
+  "/shift/assignment": {
+    title: "Shift",
+    subtitle: "Teams Assignment",
+  },
+  "/shift/rosters": {
+    title: "Shift",
+    subtitle: "Rosters",
+  },
   "/shift": {
     title: "Shift",
     subtitle: "Shift Management",
+  },
+  "/leave/apply": {
+    title: "Leave",
+    subtitle: "Apply Leave",
+  },
+  "/leave/requests": {
+    title: "Leave",
+    subtitle: "Requests",
+  },
+  "/leave/settings": {
+    title: "Leave",
+    subtitle: "Settings",
   },
   "/leave-requests": {
     title: "Leave",
@@ -42,9 +86,61 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
     title: "Reports",
     subtitle: "Daily / Weekly / Monthly Reports",
   },
+  "/reports/daily": {
+    title: "Reports",
+    subtitle: "Daily Report",
+  },
+  "/reports/monthly": {
+    title: "Reports",
+    subtitle: "Monthly Report",
+  },
+  "/reports/summary": {
+    title: "Reports",
+    subtitle: "Summary",
+  },
   "/roles": {
     title: "Users & Roles",
     subtitle: "Access and Account Management",
+  },
+  "/permissions-assignment": {
+    title: "Users & Roles",
+    subtitle: "Permissions Assignment",
+  },
+  "/profile": {
+    title: "Profile",
+    subtitle: "Personal profile and activity",
+  },
+  "/billing/subscription-plan": {
+    title: "Billing",
+    subtitle: "Subscription Plan",
+  },
+  "/billing/payment": {
+    title: "Billing",
+    subtitle: "Payment",
+  },
+  "/billing/invoices": {
+    title: "Billing",
+    subtitle: "Invoices",
+  },
+  "/billing/usage": {
+    title: "Billing",
+    subtitle: "Usage (Seats / Limits)",
+  },
+  "/system/config": {
+    title: "System",
+    subtitle: "System Config",
+  },
+  "/system/audit-logs": {
+    title: "System",
+    subtitle: "Audit Logs",
+  },
+  "/system/feature-flags": {
+    title: "System",
+    subtitle: "Feature Flags",
+  },
+  "/system/platform-overview": {
+    title: "System",
+    subtitle: "Platform Overview",
   },
 };
 

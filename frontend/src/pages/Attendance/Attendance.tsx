@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card, DatePicker, Empty, Select, Space, Table, Tabs, Tag, Typography, message } from "antd";
 import { CoffeeOutlined, LoginOutlined, LogoutOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { useLocation, useNavigate } from "react-router-dom";
 import { breakIn, breakOut, checkIn, checkOut, getAttendanceEvents } from "../../api/attendance";
 import { getRosters } from "../../api/rosters";
 import { getStatusColor } from "../../utils/statusColors";
@@ -214,6 +215,36 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 export default function Attendance() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const attendanceRouteView = useMemo(() => {
+    if (location.pathname.startsWith("/attendance/report")) return "report";
+    if (location.pathname.startsWith("/attendance/calendar")) return "calendar";
+    return "clock";
+  }, [location.pathname]);
+
+  const activeTopTab = attendanceRouteView === "clock" ? "self" : "admin";
+
+  const adminViewTitle = attendanceRouteView === "report" ? "Work Hours Report" : "Attendance Calendar";
+  const adminViewHint = attendanceRouteView === "report"
+    ? "Worked hours and anomalies are shown in the records below."
+    : "Attendance records by date/team are shown below.";
+
+  const handleTopTabChange = (key: string) => {
+    if (key === "self") {
+      navigate("/attendance/clock");
+      return;
+    }
+
+    if (attendanceRouteView === "report") {
+      navigate("/attendance/report");
+      return;
+    }
+
+    navigate("/attendance/calendar");
+  };
+
   const resolveShiftDateToday = useCallback(() => getTodayByTimezone(getCompanyTimezoneFromStorage()), []);
   const currentEmployeeId = localStorage.getItem("employee_id") || "";
   const currentCompanyId = localStorage.getItem("company_id") || undefined;
@@ -563,7 +594,8 @@ export default function Attendance() {
       </Space>
 
       <Tabs
-        defaultActiveKey="self"
+        activeKey={activeTopTab}
+        onChange={handleTopTabChange}
         items={[
           {
             key: "self",
@@ -660,9 +692,9 @@ export default function Attendance() {
                   </Space>
                 </Card>
 
-                <Card title="Attendance Records">
+                <Card title={adminViewTitle}>
                 <Space style={{ marginBottom: 12 }} wrap>
-                  <Text type="secondary">Timeline is available in the detailed records below.</Text>
+                  <Text type="secondary">{adminViewHint}</Text>
                 </Space>
                 <Table<AdminRow>
                   rowKey="id"
@@ -744,9 +776,10 @@ export default function Attendance() {
         ]}
       />
 
-      <Card title="Attendance Scenario" style={{ display: 'none' }}>
+      <Card title="End-to-End Validation" style={{ display: 'none' }}>
         {scenarioResult ? (
           <Space direction="vertical" size={8}>
+            <Text strong>Attendance Results</Text>
             <Text>Employee: {scenarioResult.employeeName}</Text>
             <Text>Shift: {scenarioResult.shiftName} ({scenarioResult.shiftWindow})</Text>
             <Text>Check In: {toDateTime(scenarioResult.checkIn)}</Text>

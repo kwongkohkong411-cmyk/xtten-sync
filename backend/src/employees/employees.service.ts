@@ -266,9 +266,14 @@ export class EmployeesService extends BaseRbacService {
   }
 
   private async assertEmployeeInScope(id: string, actor?: Actor) {
+    const context = await this.resolveActorContext(actor);
     const employee = await this.prisma.employee.findUnique({
       where: { id },
-      select: { companyId: true },
+      select: {
+        companyId: true,
+        userId: true,
+        departmentId: true,
+      },
     });
 
     if (!employee) {
@@ -276,6 +281,26 @@ export class EmployeesService extends BaseRbacService {
     }
 
     await this.assertTenantAccess(actor, employee.companyId);
+
+    if (
+      context.roleName === 'EMPLOYEE' &&
+      employee.userId !== context.userId
+    ) {
+      throw new ForbiddenException('Employees can only access their own profile');
+    }
+
+    if (context.roleName === 'TEAM_LEAD') {
+      const isSelf = employee.userId === context.userId;
+      const inManagedDepartment =
+        Boolean(employee.departmentId) &&
+        context.managedDepartmentIds.includes(employee.departmentId as string);
+
+      if (!isSelf && !inManagedDepartment) {
+        throw new ForbiddenException(
+          'Team leads can only access profiles in their own team scope',
+        );
+      }
+    }
   }
 
   private toBoolean(input: unknown, defaultValue: boolean) {
@@ -930,6 +955,52 @@ export class EmployeesService extends BaseRbacService {
   // =================================================
   async findAll(actor?: Actor) {
     const scopedCompanyId = await this.getScopedCompanyId(actor);
+    const context = await this.resolveActorContext(actor);
+
+    if (context.roleName === 'EMPLOYEE') {
+      return this.prisma.employee.findMany({
+        where: {
+          userId: context.userId,
+          ...(scopedCompanyId ? { companyId: scopedCompanyId } : {}),
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          company: true,
+          department: true,
+          user: true,
+        },
+      });
+    }
+
+    if (context.roleName === 'TEAM_LEAD') {
+      return this.prisma.employee.findMany({
+        where: {
+          ...(scopedCompanyId ? { companyId: scopedCompanyId } : {}),
+          OR: [
+            { userId: context.userId },
+            ...(context.managedDepartmentIds.length
+              ? [
+                  {
+                    departmentId: {
+                      in: context.managedDepartmentIds,
+                    },
+                  },
+                ]
+              : []),
+          ],
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          company: true,
+          department: true,
+          user: true,
+        },
+      });
+    }
 
     return this.prisma.employee.findMany({
       where: scopedCompanyId ? { companyId: scopedCompanyId } : undefined,
