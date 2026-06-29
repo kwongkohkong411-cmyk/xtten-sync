@@ -13,8 +13,15 @@ type AttendanceEvent = {
   employeeId: string;
   workDate?: string;
   status?: string;
+  ruleSource?: string;
   checkIn?: string | null;
   checkOut?: string | null;
+  scheduledStartTime?: string | null;
+  scheduledEndTime?: string | null;
+  lateMinutes?: number | null;
+  lateHours?: number | null;
+  earlyLeaveMinutes?: number | null;
+  earlyLeaveHours?: number | null;
   totalHours?: number | null;
   totalHoursDecimal?: number | null;
   anomaly?: string;
@@ -175,16 +182,27 @@ export default function Attendance() {
       const worked = Number(e.totalHoursDecimal ?? e.totalHours ?? 0);
       const workMonth = dayjs(e.workDate || e.checkIn || e.checkOut || new Date()).format("YYYY-MM");
       const rosterInfo = rosterMap.get(`${e.employeeId}:${workMonth}`);
+      const lateMinutes = Number(e.lateMinutes ?? 0);
+      const earlyLeaveMinutes = Number(e.earlyLeaveMinutes ?? 0);
+
       return {
         id: e.id,
         employeeId: e.employeeId,
         employee: e.employee?.name || e.employeeId,
         team: rosterInfo?.team || "-",
         shift: rosterInfo?.shift || e.shift?.name || "-",
+        scheduledStartTime: e.scheduledStartTime || "-",
+        scheduledEndTime: e.scheduledEndTime || "-",
         checkIn: e.checkIn,
         checkOut: e.checkOut,
+        lateMinutes,
+        lateHours: Number(e.lateHours ?? lateMinutes / 60),
+        earlyLeaveMinutes,
+        earlyLeaveHours: Number(e.earlyLeaveHours ?? earlyLeaveMinutes / 60),
         worked,
-        status: (e.anomalyList || []).includes("LATE") ? "LATE" : e.status || e.anomaly || "-",
+        status: e.status || "-",
+        anomaly: Array.isArray(e.anomalyList) && e.anomalyList.length ? e.anomalyList.join(", ") : e.anomaly || "-",
+        ruleSource: e.ruleSource || "-",
       };
     });
 
@@ -374,15 +392,33 @@ export default function Attendance() {
                     { title: "员工", dataIndex: "employee" },
                     { title: "团队", dataIndex: "team" },
                     { title: "班次", dataIndex: "shift" },
-                    { title: "上班", dataIndex: "checkIn", render: (v: string) => toDateTime(v) },
-                    { title: "下班", dataIndex: "checkOut", render: (v: string) => toDateTime(v) },
+                    { title: "Scheduled Start", dataIndex: "scheduledStartTime" },
+                    { title: "Scheduled End", dataIndex: "scheduledEndTime" },
+                    { title: "Actual Check In", dataIndex: "checkIn", render: (v: string) => toDateTime(v) },
+                    { title: "Actual Check Out", dataIndex: "checkOut", render: (v: string) => toDateTime(v) },
+                    {
+                      title: "Late Minutes",
+                      dataIndex: "lateMinutes",
+                      render: (_: number, row: any) =>
+                        `${row.lateMinutes} min (${row.lateHours.toFixed(2)} h)`,
+                    },
+                    {
+                      title: "Early Leave Minutes",
+                      dataIndex: "earlyLeaveMinutes",
+                      render: (_: number, row: any) =>
+                        `${row.earlyLeaveMinutes} min (${row.earlyLeaveHours.toFixed(2)} h)`,
+                    },
                     { title: "实际工时", dataIndex: "worked", render: (v: number) => `${toHours(v)} h` },
                     {
-                      title: "状态",
+                      title: "Status",
                       dataIndex: "status",
                       render: (v: string) => <Tag color={String(v).includes("LATE") ? "orange" : String(v).includes("ABSENT") ? "red" : "green"}>{v}</Tag>,
                     },
-                    { title: "操作", render: () => <Button size="small">查看</Button> },
+                    {
+                      title: "Anomaly",
+                      dataIndex: "anomaly",
+                      render: (v: string) => <Tag color={v && v !== "-" ? "volcano" : "default"}>{v}</Tag>,
+                    },
                   ]}
                 />
               </Card>
