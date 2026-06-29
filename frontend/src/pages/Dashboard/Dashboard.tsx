@@ -10,6 +10,7 @@ type DashboardRow = {
   key: string;
   employeeId: string;
   employeeName: string;
+  teamName: string;
   status: string;
   currentApp: string;
   workingHours: string;
@@ -88,6 +89,7 @@ export default function Dashboard() {
         key: String(row.employeeId || idx),
         employeeId: String(row.employeeId || ""),
         employeeName: String(row.name || row.username || row.employeeId || "-"),
+        teamName: String(row.teamName || 'N/A'),
         status: String(row.status || "-"),
         currentApp: String(liveData?.appName || "-"),
         workingHours: String(row.totalHoursDuration || (row.totalHoursDecimal != null ? Number(row.totalHoursDecimal).toFixed(2) : "-")),
@@ -118,31 +120,28 @@ export default function Dashboard() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={8} xl={4}>
-          <Card loading={loading}><Statistic title="Today's Attendance" value={totalEmployees} /></Card>
+          <Card loading={loading}><Statistic title="Attendance" value={totalEmployees} valueStyle={{ fontSize: 34, fontWeight: 700 }} /></Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
-          <Card loading={loading}><Statistic title="Present" value={Number(daily?.present || 0)} /></Card>
+          <Card loading={loading}><Statistic title="Present" value={Number(daily?.present || 0)} valueStyle={{ fontSize: 34, fontWeight: 700 }} /></Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
-          <Card loading={loading}><Statistic title="Absent" value={Number(daily?.absent || 0)} /></Card>
+          <Card loading={loading}><Statistic title="Late" value={Number(statusSummary.late || 0)} valueStyle={{ fontSize: 34, fontWeight: 700 }} /></Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
-          <Card loading={loading}><Statistic title="Late" value={Number(statusSummary.late || 0)} /></Card>
+          <Card loading={loading}><Statistic title="Leave" value={Number(statusSummary.leave || 0)} valueStyle={{ fontSize: 34, fontWeight: 700 }} /></Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
-          <Card loading={loading}><Statistic title="Leave" value={Number(statusSummary.leave || 0)} /></Card>
+          <Card loading={loading}><Statistic title="Absent" value={Number(daily?.absent || 0)} valueStyle={{ fontSize: 34, fontWeight: 700 }} /></Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
-          <Card loading={loading}><Statistic title="Online" value={onlineCount} /></Card>
+          <Card loading={loading}><Statistic title="Working" value={workingCount} valueStyle={{ fontSize: 34, fontWeight: 700 }} /></Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
-          <Card loading={loading}><Statistic title="Offline" value={offlineCount} /></Card>
+          <Card loading={loading}><Statistic title="Idle" value={idleCount} valueStyle={{ fontSize: 34, fontWeight: 700 }} /></Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
-          <Card loading={loading}><Statistic title="Idle" value={idleCount} /></Card>
-        </Col>
-        <Col xs={24} sm={12} lg={8} xl={4}>
-          <Card loading={loading}><Statistic title="Working" value={workingCount} /></Card>
+          <Card loading={loading}><Statistic title="Offline" value={offlineCount} valueStyle={{ fontSize: 34, fontWeight: 700 }} /></Card>
         </Col>
       </Row>
 
@@ -153,6 +152,7 @@ export default function Dashboard() {
           pagination={{ pageSize: 10 }}
           columns={[
             { title: "Employee", dataIndex: "employeeName" },
+            { title: 'Team', dataIndex: 'teamName' },
             {
               title: "Status",
               dataIndex: "status",

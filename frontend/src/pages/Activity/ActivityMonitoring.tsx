@@ -206,6 +206,26 @@ export default function ActivityMonitoring({ view }: Props) {
     ];
   }, [screenshotRows]);
 
+  const screenshotKpi = useMemo(() => {
+    const captured = screenshotRows.length;
+    const online = screenshotRows.filter((row: any) => row.status === 'online').length;
+    const idle = screenshotRows.filter((row: any) => row.status === 'idle').length;
+    const offline = screenshotRows.filter((row: any) => row.status === 'offline').length;
+    const employees = new Set(
+      screenshotRows
+        .map((row: any) => String(row?.employeeId || '').trim())
+        .filter(Boolean),
+    ).size;
+
+    return {
+      captured,
+      online,
+      idle,
+      offline,
+      employees,
+    };
+  }, [screenshotRows]);
+
   const singleEmployeeMinuteRows = useMemo(() => {
     if (employeeFilter === 'all') return [];
     const rows = screenshotRows.filter((row: any) => String(row.employeeId || '') === employeeFilter);
@@ -338,50 +358,72 @@ export default function ActivityMonitoring({ view }: Props) {
 
   return (
     <div>
+      <Card style={{ marginBottom: 16 }}>
+        <Title level={3} style={{ marginBottom: 8 }}>Screenshot Wall</Title>
+        <Text type='secondary'>Live screenshot monitoring with team and employee level filtering.</Text>
+      </Card>
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} md={8} lg={4}><Card><Text type='secondary'>Captured</Text><Title level={4}>{screenshotKpi.captured}</Title></Card></Col>
+        <Col xs={24} sm={12} md={8} lg={4}><Card><Text type='secondary'>Online</Text><Title level={4}>{screenshotKpi.online}</Title></Card></Col>
+        <Col xs={24} sm={12} md={8} lg={4}><Card><Text type='secondary'>Idle</Text><Title level={4}>{screenshotKpi.idle}</Title></Card></Col>
+        <Col xs={24} sm={12} md={8} lg={4}><Card><Text type='secondary'>Offline</Text><Title level={4}>{screenshotKpi.offline}</Title></Card></Col>
+        <Col xs={24} sm={12} md={8} lg={4}><Card><Text type='secondary'>Employees</Text><Title level={4}>{screenshotKpi.employees}</Title></Card></Col>
+      </Row>
+
+      <Card style={{ marginBottom: 16 }}>
+        <Row gutter={[12, 12]} align='middle' justify='space-between'>
+          <Col xs={24} lg={18}>
+            <Space wrap>
+              <DatePicker value={date} onChange={(v) => setDate(v || dayjs())} />
+              <Input.Search
+                allowClear
+                placeholder='Search screenshots'
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ width: 220 }}
+              />
+              <Select value={teamFilter} style={{ width: 180 }} onChange={setTeamFilter} options={teamOptions} />
+              <Select value={employeeFilter} style={{ width: 240 }} onChange={setEmployeeFilter} options={employeeOptions} />
+              <Select
+                value={statusFilter}
+                style={{ width: 128 }}
+                onChange={setStatusFilter}
+                options={[
+                  { value: 'all', label: 'Status: All' },
+                  { value: 'online', label: 'Online' },
+                  { value: 'idle', label: 'Idle' },
+                  { value: 'offline', label: 'Offline' },
+                ]}
+              />
+              <Select
+                value={sortMode}
+                style={{ width: 168 }}
+                onChange={setSortMode}
+                options={[
+                  { value: 'time_desc', label: 'Time ↓' },
+                  { value: 'time_asc', label: 'Time ↑' },
+                  { value: 'activity_desc', label: 'Activity ↓' },
+                  { value: 'activity_asc', label: 'Activity ↑' },
+                ]}
+              />
+            </Space>
+          </Col>
+          <Col xs={24} lg={6}>
+            <Space style={{ width: '100%', justifyContent: 'flex-end' }} wrap>
+              <Button icon={<ReloadOutlined />} onClick={() => setRefreshTick((v) => v + 1)}>
+                Refresh
+              </Button>
+              <Button type='primary' icon={<DownloadOutlined />} onClick={exportCsv}>
+                Export CSV
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+
       <Card
-        title={<Title level={4} style={{ margin: 0 }}>Screenshot Wall</Title>}
-        extra={
-          <Space wrap>
-            <DatePicker value={date} onChange={(v) => setDate(v || dayjs())} />
-            <Input.Search
-              allowClear
-              placeholder='Search screenshots'
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ width: 220 }}
-            />
-            <Select value={teamFilter} style={{ width: 180 }} onChange={setTeamFilter} options={teamOptions} />
-            <Select value={employeeFilter} style={{ width: 240 }} onChange={setEmployeeFilter} options={employeeOptions} />
-            <Select
-              value={statusFilter}
-              style={{ width: 128 }}
-              onChange={setStatusFilter}
-              options={[
-                { value: 'all', label: 'Status: All' },
-                { value: 'online', label: 'Online' },
-                { value: 'idle', label: 'Idle' },
-                { value: 'offline', label: 'Offline' },
-              ]}
-            />
-            <Select
-              value={sortMode}
-              style={{ width: 168 }}
-              onChange={setSortMode}
-              options={[
-                { value: 'time_desc', label: 'Time ↓' },
-                { value: 'time_asc', label: 'Time ↑' },
-                { value: 'activity_desc', label: 'Activity ↓' },
-                { value: 'activity_asc', label: 'Activity ↑' },
-              ]}
-            />
-            <Button icon={<ReloadOutlined />} onClick={() => setRefreshTick((v) => v + 1)}>
-              Refresh
-            </Button>
-            <Button type='primary' icon={<DownloadOutlined />} onClick={exportCsv}>
-              Export CSV
-            </Button>
-          </Space>
-        }
+        title={<Title level={4} style={{ margin: 0 }}>Screenshots</Title>}
       >
         {screenshotRows.length === 0 ? (
           <Empty description='No screenshots' />

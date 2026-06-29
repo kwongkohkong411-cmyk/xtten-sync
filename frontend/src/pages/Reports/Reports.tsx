@@ -156,7 +156,7 @@ export default function Reports() {
         'Missing',
         'Attendance %',
         'Work Hours',
-        'OT Hours',
+        'Overtime',
       ];
       const csvLines = [
         headers.map((h) => toCsvCell(h)).join(','),
@@ -205,13 +205,18 @@ export default function Reports() {
 
   const dailyMetrics = useMemo(() => {
     const status = dailyData?.statusSummary || {};
+    const rows = Array.isArray(dailyData?.rows) ? dailyData.rows : [];
+    const workHours = rows
+      .reduce((sum: number, row: any) => sum + Number(row?.totalHoursDecimal || 0), 0);
+    const overtime = rows
+      .reduce((sum: number, row: any) => sum + Number(row?.otHoursDecimal || 0), 0);
     return {
-      totalEmployees: Number(dailyData?.totalEmployees || 0),
-      attendanceRate: Number(dailyData?.attendanceRate || 0),
-      onTime: Number(status.onTime || 0),
+      present: Number(status.onTime || 0) + Number(status.late || 0),
       late: Number(status.late || 0),
       leave: Number(status.leave || 0),
       absent: Number(status.absent || 0) + Number(status.missing || 0),
+      workHours: Number(workHours.toFixed(2)),
+      overtime: Number(overtime.toFixed(2)),
     };
   }, [dailyData]);
 
@@ -293,7 +298,7 @@ export default function Reports() {
       <Card>
         <Title level={3} style={{ marginBottom: 8 }}>Reports</Title>
         <Text type='secondary'>
-          Daily Report, Monthly Report, and All Attendance Summary consolidated with Attendance + Leave.
+          Attendance reporting across daily, monthly, and summary views.
         </Text>
       </Card>
 
@@ -303,7 +308,7 @@ export default function Reports() {
         items={[
           { key: 'daily', label: 'Daily Report' },
           { key: 'monthly', label: 'Monthly Report' },
-          { key: 'summary', label: 'All Attendance Summary' },
+          { key: 'summary', label: 'Attendance Summary' },
         ]}
       />
 
@@ -381,20 +386,24 @@ export default function Reports() {
       {tab === 'daily' && (
         <>
           <Row gutter={[16, 16]}>
-            <Col xs={24} md={8}><Card loading={loading}><Text type='secondary'>Total Employees</Text><Title level={4}>{dailyMetrics.totalEmployees}</Title></Card></Col>
-            <Col xs={24} md={8}><Card loading={loading}><Text type='secondary'>Attendance Rate</Text><Title level={4}>{dailyMetrics.attendanceRate}%</Title></Card></Col>
-            <Col xs={24} md={8}><Card loading={loading}><Text type='secondary'>Leave</Text><Title level={4}>{dailyMetrics.leave}</Title></Card></Col>
+            <Col xs={24} md={8} lg={4}><Card loading={loading}><Text type='secondary'>Present</Text><Title level={4}>{dailyMetrics.present}</Title></Card></Col>
+            <Col xs={24} md={8} lg={4}><Card loading={loading}><Text type='secondary'>Late</Text><Title level={4}>{dailyMetrics.late}</Title></Card></Col>
+            <Col xs={24} md={8} lg={4}><Card loading={loading}><Text type='secondary'>Leave</Text><Title level={4}>{dailyMetrics.leave}</Title></Card></Col>
+            <Col xs={24} md={8} lg={4}><Card loading={loading}><Text type='secondary'>Absent</Text><Title level={4}>{dailyMetrics.absent}</Title></Card></Col>
+            <Col xs={24} md={8} lg={4}><Card loading={loading}><Text type='secondary'>Work Hours</Text><Title level={4}>{dailyMetrics.workHours}</Title></Card></Col>
+            <Col xs={24} md={8} lg={4}><Card loading={loading}><Text type='secondary'>Overtime</Text><Title level={4}>{dailyMetrics.overtime}</Title></Card></Col>
           </Row>
 
-          <Card title='Daily Attendance Rows'>
+          <Card title='Daily Report'>
             <Table
               rowKey='employeeId'
               loading={loading}
               pagination={{ pageSize: 10 }}
               dataSource={Array.isArray(dailyData?.rows) ? dailyData.rows : []}
               columns={[
+                { title: 'Date', dataIndex: 'workDate', render: (value: string) => value || '-' },
+                { title: 'Team', dataIndex: 'teamName', render: (value: string) => value || 'N/A' },
                 { title: 'Employee', dataIndex: 'name' },
-                { title: 'Username', dataIndex: 'username' },
                 {
                   title: 'Status',
                   dataIndex: 'status',
@@ -416,7 +425,12 @@ export default function Reports() {
                   render: (value: number | null) => (value != null ? Number(value).toFixed(2) : '-'),
                 },
                 {
-                  title: 'OT Hours',
+                  title: 'Late',
+                  dataIndex: 'status',
+                  render: (value: string) => (value === 'LATE' ? 'Yes' : value ? 'No' : '--'),
+                },
+                {
+                  title: 'Overtime',
                   dataIndex: 'otHoursDecimal',
                   render: (value: number | null) => (value != null ? Number(value).toFixed(2) : '0.00'),
                 },
@@ -452,7 +466,7 @@ export default function Reports() {
                   render: (value: number) => `${Number(value || 0).toFixed(2)}%`,
                 },
                 {
-                  title: 'OT Hours',
+                  title: 'Overtime',
                   dataIndex: 'totalOtHours',
                   render: (value: number) => Number(value || 0).toFixed(2),
                 },
@@ -470,7 +484,7 @@ export default function Reports() {
             <Col xs={24} md={8}><Card loading={loading}><Text type='secondary'>Leave</Text><Title level={4}>{summaryMetrics.leave}</Title></Card></Col>
           </Row>
 
-          <Card title='All Attendance Summary'>
+          <Card title='Attendance Summary'>
             <Table
               rowKey='employeeId'
               loading={loading}
@@ -499,7 +513,7 @@ export default function Reports() {
                   render: (value: number) => Number(value || 0).toFixed(2),
                 },
                 {
-                  title: 'OT Hours',
+                  title: 'Overtime',
                   dataIndex: 'otHoursDecimal',
                   render: (value: number) => Number(value || 0).toFixed(2),
                 },
