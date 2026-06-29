@@ -130,6 +130,12 @@ export default function Leaves() {
 
   const loadLeaveSettings = useCallback(async () => {
     if (!canViewSettings) return;
+    if (!currentCompanyId) {
+      setLeaveTypes([]);
+      setLeaveBalances([]);
+      setLeaveApprovers([]);
+      return;
+    }
 
     setSettingLoading(true);
     try {
