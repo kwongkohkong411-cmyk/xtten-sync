@@ -23,7 +23,8 @@ export class CreateLeaveDto {
   @IsNotEmpty()
   endDate!: string;
 
-  @IsEnum(['ANNUAL', 'SICK', 'PERSONAL', 'OVERTIME', 'OTHER'])
+  @IsString()
+  @IsNotEmpty()
   type!: string;
 
   @IsOptional()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   Button,
@@ -17,15 +17,33 @@ import {
   Tabs,
   Tag,
   Typography,
-} from "antd";
-import { PlusOutlined } from "@ant-design/icons";
-import dayjs, { type Dayjs } from "dayjs";
-import { useLocation, useNavigate } from "react-router-dom";
-import PageHeader from "../../components/ui/PageHeader/PageHeader";
-import SearchBar from "../../components/ui/SearchBar";
-import { createLeave, getLeaves, updateLeave } from "@/api/leaves";
-import { getUsers } from "@/api/users";
-import { hasPermission } from "@/utils/auth";
+} from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
+import { useLocation, useNavigate } from 'react-router-dom';
+import PageHeader from '../../components/ui/PageHeader/PageHeader';
+import SearchBar from '../../components/ui/SearchBar';
+import { createLeave, getLeaves, updateLeave } from '@/api/leaves';
+import { getUsers } from '@/api/users';
+import {
+  createLeaveApprover,
+  createLeaveBalanceSetting,
+  createLeaveType,
+  deleteLeaveApprover,
+  deleteLeaveBalanceSetting,
+  deleteLeaveType,
+  getLeaveApprovers,
+  getLeaveBalanceSettings,
+  getLeaveTypes,
+  updateLeaveApprover,
+  updateLeaveBalanceSetting,
+  updateLeaveType,
+  type LeaveApproverDto,
+  type LeaveBalanceSettingDto,
+  type LeaveTypeCategory,
+  type LeaveTypeDto,
+} from '@/api/leave-settings';
+import { hasPermission } from '@/utils/auth';
 
 type LeaveRequest = {
   id: string;
@@ -34,22 +52,7 @@ type LeaveRequest = {
   startDate: string;
   endDate: string;
   reason?: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-};
-
-type LeaveTypeItem = {
-  id: string;
-  name: string;
-  code: string;
-  active: boolean;
-};
-
-type LeaveBalanceItem = {
-  id: string;
-  leaveTypeCode: string;
-  period: "MONTHLY" | "YEARLY";
-  days: number;
-  carryForward: boolean;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
 };
 
 type UserOption = {
@@ -60,63 +63,46 @@ type UserOption = {
   companyId?: string | null;
 };
 
-type StoredLeaveSettings = {
-  types: LeaveTypeItem[];
-  balances: LeaveBalanceItem[];
-  approverIds: string[];
-};
-
-const DEFAULT_LEAVE_TYPES: LeaveTypeItem[] = [
-  { id: "lt-annual", name: "Annual Leave", code: "ANNUAL", active: true },
-  { id: "lt-medical", name: "Medical Leave", code: "MEDICAL", active: true },
-  { id: "lt-emergency", name: "Emergency Leave", code: "EMERGENCY", active: true },
-  { id: "lt-unpaid", name: "Unpaid Leave", code: "UNPAID", active: true },
-  { id: "lt-marriage", name: "Marriage Leave", code: "MARRIAGE", active: true },
-  { id: "lt-replacement", name: "Replacement Leave", code: "REPLACEMENT", active: true },
-];
-
-function settingsStorageKey(companyId?: string) {
-  return `xtten_leave_settings_${companyId || "global"}`;
-}
-
 function formatRange(startDate: string, endDate: string) {
-  return `${dayjs(startDate).format("YYYY-MM-DD")} - ${dayjs(endDate).format("YYYY-MM-DD")}`;
+  return `${dayjs(startDate).format('YYYY-MM-DD')} - ${dayjs(endDate).format('YYYY-MM-DD')}`;
 }
 
-function getStatusColor(status: LeaveRequest["status"]) {
-  if (status === "APPROVED") return "green";
-  if (status === "REJECTED") return "red";
-  return "orange";
+function getStatusColor(status: LeaveRequest['status']) {
+  if (status === 'APPROVED') return 'green';
+  if (status === 'REJECTED') return 'red';
+  return 'orange';
 }
 
 export default function Leaves() {
   const location = useLocation();
   const navigate = useNavigate();
+
+  const currentCompanyId = localStorage.getItem('company_id') || undefined;
+
   const [loading, setLoading] = useState(false);
+  const [settingLoading, setSettingLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
-  const [searchText, setSearchText] = useState("");
+  const [leaveTypes, setLeaveTypes] = useState<LeaveTypeDto[]>([]);
+  const [leaveBalances, setLeaveBalances] = useState<LeaveBalanceSettingDto[]>([]);
+  const [leaveApprovers, setLeaveApprovers] = useState<LeaveApproverDto[]>([]);
 
-  const [rootTab, setRootTab] = useState<"requests" | "settings">("requests");
-  const [requestTab, setRequestTab] = useState<"apply" | "all" | "pending">("all");
-  const [settingsTab, setSettingsTab] = useState<"types" | "balances" | "approvers">("types");
-
-  const [leaveTypes, setLeaveTypes] = useState<LeaveTypeItem[]>(DEFAULT_LEAVE_TYPES);
-  const [leaveBalances, setLeaveBalances] = useState<LeaveBalanceItem[]>([]);
-  const [leaveApproverIds, setLeaveApproverIds] = useState<string[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [rootTab, setRootTab] = useState<'requests' | 'settings'>('requests');
+  const [requestTab, setRequestTab] = useState<'apply' | 'all' | 'pending'>('all');
+  const [settingsTab, setSettingsTab] = useState<'types' | 'balances' | 'approvers'>('types');
 
   const [applyForm] = Form.useForm();
   const [typeForm] = Form.useForm();
   const [balanceForm] = Form.useForm();
+  const [approverForm] = Form.useForm();
 
-  const currentCompanyId = localStorage.getItem("company_id") || undefined;
-  const canApplyLeave = hasPermission("leave:apply") || hasPermission("leave:submit") || hasPermission("leave:manage");
-  const canApproveLeave = hasPermission("leave:approve") || hasPermission("leave:manage");
-  const canEditSettings = hasPermission("leave:edit_settings") || hasPermission("leave:manage");
-  const canViewSettings = hasPermission("leave:view_settings") || canEditSettings;
-
-  const settingsReadyRef = useRef(false);
+  const canApplyLeave = hasPermission('leave:apply') || hasPermission('leave:submit') || hasPermission('leave:manage');
+  const canApproveLeave = hasPermission('leave:approve') || hasPermission('leave:manage');
+  const canEditSettings = hasPermission('leave:edit_settings') || hasPermission('leave:manage');
+  const canViewSettings = hasPermission('leave:view_settings') || canEditSettings;
 
   const loadLeaves = useCallback(async () => {
     setLoading(true);
@@ -124,7 +110,7 @@ export default function Leaves() {
       const response = await getLeaves();
       setLeaves(Array.isArray(response.data) ? response.data : []);
     } catch (error: any) {
-      message.error(error?.response?.data?.message || "Unable to load leave requests");
+      message.error(error?.response?.data?.message || 'Unable to load leave requests');
       setLeaves([]);
     } finally {
       setLoading(false);
@@ -140,14 +126,29 @@ export default function Leaves() {
     }
   }, []);
 
-  useEffect(() => {
-    if (location.pathname.startsWith("/leave-settings")) {
-      setRootTab("settings");
-      return;
-    }
+  const loadLeaveSettings = useCallback(async () => {
+    if (!canViewSettings) return;
 
-    setRootTab("requests");
-  }, [location.pathname]);
+    setSettingLoading(true);
+    try {
+      const [typesRes, balancesRes, approversRes] = await Promise.all([
+        getLeaveTypes(currentCompanyId),
+        getLeaveBalanceSettings(currentCompanyId),
+        getLeaveApprovers(currentCompanyId),
+      ]);
+
+      setLeaveTypes(Array.isArray(typesRes.data) ? typesRes.data : []);
+      setLeaveBalances(Array.isArray(balancesRes.data) ? balancesRes.data : []);
+      setLeaveApprovers(Array.isArray(approversRes.data) ? approversRes.data : []);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Unable to load leave settings');
+      setLeaveTypes([]);
+      setLeaveBalances([]);
+      setLeaveApprovers([]);
+    } finally {
+      setSettingLoading(false);
+    }
+  }, [canViewSettings, currentCompanyId]);
 
   useEffect(() => {
     void loadLeaves();
@@ -155,63 +156,21 @@ export default function Leaves() {
   }, [loadLeaves, loadUsers]);
 
   useEffect(() => {
-    const key = settingsStorageKey(currentCompanyId);
-    const raw = localStorage.getItem(key);
-
-    if (!raw) {
-      settingsReadyRef.current = true;
+    if (location.pathname.startsWith('/leave-settings')) {
+      setRootTab('settings');
+      void loadLeaveSettings();
       return;
     }
 
-    try {
-      const parsed = JSON.parse(raw) as Partial<StoredLeaveSettings>;
-      setLeaveTypes(Array.isArray(parsed.types) && parsed.types.length ? parsed.types : DEFAULT_LEAVE_TYPES);
-      setLeaveBalances(Array.isArray(parsed.balances) ? parsed.balances : []);
-      setLeaveApproverIds(Array.isArray(parsed.approverIds) ? parsed.approverIds : []);
-    } catch {
-      setLeaveTypes(DEFAULT_LEAVE_TYPES);
-      setLeaveBalances([]);
-      setLeaveApproverIds([]);
-    } finally {
-      settingsReadyRef.current = true;
-    }
-  }, [currentCompanyId]);
+    setRootTab('requests');
+  }, [location.pathname, loadLeaveSettings]);
 
-  useEffect(() => {
-    if (!settingsReadyRef.current) return;
-
-    const payload: StoredLeaveSettings = {
-      types: leaveTypes,
-      balances: leaveBalances,
-      approverIds: leaveApproverIds,
-    };
-
-    localStorage.setItem(settingsStorageKey(currentCompanyId), JSON.stringify(payload));
-  }, [currentCompanyId, leaveTypes, leaveBalances, leaveApproverIds]);
-
-  const activeLeaveTypes = useMemo(
-    () => leaveTypes.filter((item) => item.active),
-    [leaveTypes],
-  );
+  const activeLeaveTypes = useMemo(() => leaveTypes.filter((item) => item.active), [leaveTypes]);
 
   const companyUsers = useMemo(() => {
     if (!currentCompanyId) return users;
     return users.filter((user) => !user.companyId || user.companyId === currentCompanyId);
   }, [users, currentCompanyId]);
-
-  const approverRows = useMemo(() => {
-    return leaveApproverIds
-      .map((id) => {
-        const user = companyUsers.find((item) => item.id === id);
-        if (!user) return null;
-        return {
-          id,
-          name: user.name || user.username || user.id,
-          role: user.role || "-",
-        };
-      })
-      .filter((item): item is { id: string; name: string; role: string } => Boolean(item));
-  }, [leaveApproverIds, companyUsers]);
 
   const filteredAllRequests = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -228,15 +187,15 @@ export default function Leaves() {
   }, [leaves, searchText]);
 
   const filteredPendingRequests = useMemo(
-    () => filteredAllRequests.filter((item) => item.status === "PENDING"),
+    () => filteredAllRequests.filter((item) => item.status === 'PENDING'),
     [filteredAllRequests],
   );
 
   const submitApplyLeave = async () => {
     try {
       const values = await applyForm.validateFields();
-      const startDate = (values.startDate as Dayjs).format("YYYY-MM-DD");
-      const endDate = (values.endDate as Dayjs).format("YYYY-MM-DD");
+      const startDate = (values.startDate as Dayjs).format('YYYY-MM-DD');
+      const endDate = (values.endDate as Dayjs).format('YYYY-MM-DD');
 
       setSaving(true);
       await createLeave({
@@ -246,112 +205,117 @@ export default function Leaves() {
         reason: values.reason,
       });
 
-      message.success("Leave request submitted");
+      message.success('Leave request submitted');
       applyForm.resetFields();
-      setRequestTab("all");
+      setRequestTab('all');
       await loadLeaves();
     } catch (error: any) {
       if (error?.errorFields) return;
-      message.error(error?.response?.data?.message || "Failed to submit leave request");
+      message.error(error?.response?.data?.message || 'Failed to submit leave request');
     } finally {
       setSaving(false);
     }
   };
 
-  const changeLeaveStatus = async (id: string, status: LeaveRequest["status"]) => {
+  const changeLeaveStatus = async (id: string, status: LeaveRequest['status']) => {
     try {
       await updateLeave(id, { status });
-      message.success("Leave status updated");
+      message.success('Leave status updated');
       await loadLeaves();
     } catch (error: any) {
-      message.error(error?.response?.data?.message || "Failed to update leave status");
+      message.error(error?.response?.data?.message || 'Failed to update leave status');
     }
   };
 
-  const addLeaveType = async () => {
+  const handleCreateLeaveType = async () => {
     try {
       const values = await typeForm.validateFields();
-      const code = String(values.code).trim().toUpperCase();
-      const name = String(values.name).trim();
-
-      const exists = leaveTypes.some((item) => item.code === code || item.name.toLowerCase() === name.toLowerCase());
-      if (exists) {
-        message.warning("Leave type already exists");
-        return;
-      }
-
-      setLeaveTypes((prev) => [
-        ...prev,
-        {
-          id: `lt-${Date.now()}`,
-          name,
-          code,
-          active: true,
-        },
-      ]);
-
+      await createLeaveType({
+        companyId: currentCompanyId,
+        name: String(values.name).trim(),
+        category: values.category as LeaveTypeCategory,
+        active: Boolean(values.active),
+      });
+      message.success('Leave type added');
       typeForm.resetFields();
-      message.success("Leave type added");
-    } catch {
-      // Form validation handles errors.
+      await loadLeaveSettings();
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error?.response?.data?.message || 'Failed to add leave type');
     }
   };
 
-  const addLeaveBalance = async () => {
+  const handleCreateBalance = async () => {
     try {
       const values = await balanceForm.validateFields();
-      setLeaveBalances((prev) => [
-        ...prev,
-        {
-          id: `lb-${Date.now()}`,
-          leaveTypeCode: values.leaveTypeCode,
-          period: values.period,
-          days: Number(values.days),
-          carryForward: Boolean(values.carryForward),
-        },
-      ]);
+      await createLeaveBalanceSetting({
+        companyId: currentCompanyId,
+        leaveTypeId: values.leaveTypeId,
+        period: values.period,
+        days: Number(values.days),
+        active: Boolean(values.active),
+      });
+      message.success('Leave balance setting added');
       balanceForm.resetFields();
-      message.success("Leave balance setting added");
-    } catch {
-      // Form validation handles errors.
+      await loadLeaveSettings();
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error?.response?.data?.message || 'Failed to add leave balance setting');
+    }
+  };
+
+  const handleCreateApprover = async () => {
+    try {
+      const values = await approverForm.validateFields();
+      await createLeaveApprover({
+        companyId: currentCompanyId,
+        employeeId: values.employeeId,
+        active: Boolean(values.active),
+      });
+      message.success('Leave approver added');
+      approverForm.resetFields();
+      await loadLeaveSettings();
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error?.response?.data?.message || 'Failed to add leave approver');
     }
   };
 
   const requestColumns = [
-    { title: "Type", dataIndex: "type", key: "type" },
+    { title: 'Type', dataIndex: 'type', key: 'type' },
     {
-      title: "Period",
-      key: "period",
+      title: 'Period',
+      key: 'period',
       render: (_: unknown, record: LeaveRequest) => formatRange(record.startDate, record.endDate),
     },
-    { title: "Reason", dataIndex: "reason", key: "reason", render: (v: string) => v || "-" },
+    { title: 'Reason', dataIndex: 'reason', key: 'reason', render: (v: string) => v || '-' },
     {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      render: (status: LeaveRequest["status"]) => <Tag color={getStatusColor(status)}>{status}</Tag>,
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: LeaveRequest['status']) => <Tag color={getStatusColor(status)}>{status}</Tag>,
     },
     {
-      title: "Action",
-      key: "action",
+      title: 'Action',
+      key: 'action',
       render: (_: unknown, record: LeaveRequest) => {
         if (!canApproveLeave) return <Tag>{record.status}</Tag>;
 
         return (
           <Space>
             <Button
-              type="primary"
-              size="small"
-              disabled={record.status === "APPROVED"}
-              onClick={() => changeLeaveStatus(record.id, "APPROVED")}
+              type='primary'
+              size='small'
+              disabled={record.status === 'APPROVED'}
+              onClick={() => changeLeaveStatus(record.id, 'APPROVED')}
             >
               Approve
             </Button>
             <Button
               danger
-              size="small"
-              disabled={record.status === "REJECTED"}
-              onClick={() => changeLeaveStatus(record.id, "REJECTED")}
+              size='small'
+              disabled={record.status === 'REJECTED'}
+              onClick={() => changeLeaveStatus(record.id, 'REJECTED')}
             >
               Reject
             </Button>
@@ -361,105 +325,20 @@ export default function Leaves() {
     },
   ];
 
-  const leaveTypeColumns = [
-    { title: "Name", dataIndex: "name", key: "name" },
-    { title: "Code", dataIndex: "code", key: "code" },
-    {
-      title: "Status",
-      key: "status",
-      render: (_: unknown, record: LeaveTypeItem) => (
-        <Badge status={record.active ? "success" : "default"} text={record.active ? "Active" : "Inactive"} />
-      ),
-    },
-    {
-      title: "Action",
-      key: "action",
-      render: (_: unknown, record: LeaveTypeItem) => (
-        <Space>
-          <Button
-            size="small"
-            disabled={!canEditSettings}
-            onClick={() => {
-              setLeaveTypes((prev) =>
-                prev.map((item) => (item.id === record.id ? { ...item, active: !item.active } : item)),
-              );
-            }}
-          >
-            {record.active ? "Disable" : "Enable"}
-          </Button>
-          <Popconfirm
-            title="Delete this leave type?"
-            disabled={!canEditSettings}
-            onConfirm={() => {
-              setLeaveTypes((prev) => prev.filter((item) => item.id !== record.id));
-              setLeaveBalances((prev) => prev.filter((item) => item.leaveTypeCode !== record.code));
-            }}
-          >
-            <Button danger size="small" disabled={!canEditSettings}>Delete</Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
-  const leaveBalanceColumns = [
-    {
-      title: "Leave Type",
-      dataIndex: "leaveTypeCode",
-      key: "leaveTypeCode",
-      render: (value: string) => {
-        const matched = leaveTypes.find((item) => item.code === value);
-        return matched ? matched.name : value;
-      },
-    },
-    {
-      title: "Policy",
-      key: "policy",
-      render: (_: unknown, record: LeaveBalanceItem) => (
-        <span>{record.period === "MONTHLY" ? "Monthly" : "Yearly"}</span>
-      ),
-    },
-    {
-      title: "Days",
-      dataIndex: "days",
-      key: "days",
-      render: (days: number) => `${days} Day${days > 1 ? "s" : ""}`,
-    },
-    {
-      title: "Carry Forward",
-      dataIndex: "carryForward",
-      key: "carryForward",
-      render: (carryForward: boolean) => <Tag color={carryForward ? "green" : "default"}>{carryForward ? "Yes" : "No"}</Tag>,
-    },
-    {
-      title: "Action",
-      key: "action",
-      render: (_: unknown, record: LeaveBalanceItem) => (
-        <Popconfirm
-          title="Delete this leave balance setting?"
-          disabled={!canEditSettings}
-          onConfirm={() => setLeaveBalances((prev) => prev.filter((item) => item.id !== record.id))}
-        >
-          <Button danger size="small" disabled={!canEditSettings}>Delete</Button>
-        </Popconfirm>
-      ),
-    },
-  ];
-
   return (
     <div style={{ padding: 24 }}>
       <PageHeader
-        title="Leave"
-        subtitle="Apply leave, manage requests, and configure leave settings"
+        title='Leave'
+        subtitle='Apply leave, manage requests, and configure leave settings'
         extra={
           <Space>
             <Button onClick={() => void loadLeaves()}>Refresh</Button>
             <Button
-              type="primary"
+              type='primary'
               icon={<PlusOutlined />}
               onClick={() => {
-                setRequestTab("apply");
-                navigate("/leave-requests");
+                setRequestTab('apply');
+                navigate('/leave-requests');
               }}
             >
               Apply Leave
@@ -471,19 +350,19 @@ export default function Leaves() {
       <Card style={{ marginBottom: 16, borderRadius: 16 }}>
         <Tabs
           activeKey={rootTab}
-          onChange={(key) => navigate(key === "settings" ? "/leave-settings" : "/leave-requests")}
+          onChange={(key) => navigate(key === 'settings' ? '/leave-settings' : '/leave-requests')}
           items={[
-            { key: "requests", label: "Leave Request" },
-            { key: "settings", label: "Leave Settings" },
+            { key: 'requests', label: 'Leave Request' },
+            { key: 'settings', label: 'Leave Settings' },
           ]}
         />
       </Card>
 
-      {rootTab === "requests" ? (
+      {rootTab === 'requests' ? (
         <>
           <div style={{ marginBottom: 16 }}>
             <SearchBar
-              placeholder="Search leave requests..."
+              placeholder='Search leave requests...'
               onChange={(value) => setSearchText(value)}
               width={360}
             />
@@ -492,57 +371,57 @@ export default function Leaves() {
           <Card style={{ marginBottom: 16, borderRadius: 16 }}>
             <Tabs
               activeKey={requestTab}
-              onChange={(key) => setRequestTab(key as "apply" | "all" | "pending")}
+              onChange={(key) => setRequestTab(key as 'apply' | 'all' | 'pending')}
               items={[
-                { key: "apply", label: "Apply Leave" },
-                { key: "all", label: "All Requests" },
-                { key: "pending", label: "Pending Approval" },
+                { key: 'apply', label: 'Apply Leave' },
+                { key: 'all', label: 'All Requests' },
+                { key: 'pending', label: 'Pending Approval' },
               ]}
             />
           </Card>
 
-          {requestTab === "apply" ? (
-            <Card title="Apply Leave" style={{ borderRadius: 16 }}>
+          {requestTab === 'apply' ? (
+            <Card title='Apply Leave' style={{ borderRadius: 16 }}>
               {!canApplyLeave ? (
-                <Empty description="No permission to apply leave" />
+                <Empty description='No permission to apply leave' />
               ) : (
-                <Form form={applyForm} layout="vertical" style={{ maxWidth: 520 }}>
+                <Form form={applyForm} layout='vertical' style={{ maxWidth: 520 }}>
                   <Form.Item
-                    label="Leave Type"
-                    name="type"
-                    rules={[{ required: true, message: "Please choose leave type" }]}
+                    label='Leave Type'
+                    name='type'
+                    rules={[{ required: true, message: 'Please choose leave type' }]}
                   >
                     <Select
-                      placeholder="Select leave type"
-                      options={activeLeaveTypes.map((item) => ({ label: item.name, value: item.code }))}
+                      placeholder='Select leave type'
+                      options={activeLeaveTypes.map((item) => ({ label: item.name, value: item.name }))}
                     />
                   </Form.Item>
 
-                  <Space align="start" style={{ width: "100%" }}>
+                  <Space align='start' style={{ width: '100%' }}>
                     <Form.Item
-                      label="Start Date"
-                      name="startDate"
-                      rules={[{ required: true, message: "Please choose start date" }]}
+                      label='Start Date'
+                      name='startDate'
+                      rules={[{ required: true, message: 'Please choose start date' }]}
                     >
                       <DatePicker style={{ width: 220 }} />
                     </Form.Item>
 
                     <Form.Item
-                      label="End Date"
-                      name="endDate"
-                      rules={[{ required: true, message: "Please choose end date" }]}
+                      label='End Date'
+                      name='endDate'
+                      rules={[{ required: true, message: 'Please choose end date' }]}
                     >
                       <DatePicker style={{ width: 220 }} />
                     </Form.Item>
                   </Space>
 
-                  <Form.Item label="Reason" name="reason">
-                    <Input.TextArea rows={4} placeholder="Add reason or notes" />
+                  <Form.Item label='Reason' name='reason'>
+                    <Input.TextArea rows={4} placeholder='Add reason or notes' />
                   </Form.Item>
 
                   <Form.Item>
                     <Space>
-                      <Button type="primary" loading={saving} onClick={() => void submitApplyLeave()}>
+                      <Button type='primary' loading={saving} onClick={() => void submitApplyLeave()}>
                         Submit
                       </Button>
                       <Button onClick={() => applyForm.resetFields()}>Reset</Button>
@@ -554,12 +433,12 @@ export default function Leaves() {
           ) : (
             <Card style={{ borderRadius: 16 }}>
               <Table
-                rowKey="id"
+                rowKey='id'
                 loading={loading}
-                dataSource={requestTab === "pending" ? filteredPendingRequests : filteredAllRequests}
+                dataSource={requestTab === 'pending' ? filteredPendingRequests : filteredAllRequests}
                 columns={requestColumns}
                 pagination={{ pageSize: 10 }}
-                locale={{ emptyText: "No leave requests found" }}
+                locale={{ emptyText: 'No leave requests found' }}
               />
             </Card>
           )}
@@ -568,150 +447,291 @@ export default function Leaves() {
         <>
           {!canViewSettings ? (
             <Card style={{ borderRadius: 16 }}>
-              <Empty description="No permission to view leave settings" />
+              <Empty description='No permission to view leave settings' />
             </Card>
           ) : (
             <>
               <Card style={{ marginBottom: 16, borderRadius: 16 }}>
                 <Tabs
                   activeKey={settingsTab}
-                  onChange={(key) => setSettingsTab(key as "types" | "balances" | "approvers")}
+                  onChange={(key) => setSettingsTab(key as 'types' | 'balances' | 'approvers')}
                   items={[
-                    { key: "types", label: "Leave Types" },
-                    { key: "balances", label: "Leave Balance" },
-                    { key: "approvers", label: "Leave Approvers" },
+                    { key: 'types', label: 'Leave Types' },
+                    { key: 'balances', label: 'Leave Balance' },
+                    { key: 'approvers', label: 'Leave Approvers' },
                   ]}
                 />
               </Card>
 
-              {settingsTab === "types" && (
-                <Card title="Leave Types" style={{ borderRadius: 16 }}>
-                  <Space style={{ width: "100%", marginBottom: 16 }} wrap>
-                    <Form form={typeForm} layout="inline">
+              {settingsTab === 'types' && (
+                <Card title='Leave Types' style={{ borderRadius: 16 }} loading={settingLoading}>
+                  <Space style={{ width: '100%', marginBottom: 16 }} wrap>
+                    <Form form={typeForm} layout='inline' initialValues={{ category: 'PAID', active: true }}>
                       <Form.Item
-                        name="name"
-                        rules={[{ required: true, message: "Name required" }]}
+                        name='name'
+                        rules={[{ required: true, message: 'Name required' }]}
                       >
-                        <Input placeholder="Type name (e.g. Annual Leave)" style={{ width: 260 }} />
+                        <Input placeholder='Type name (e.g. Annual Leave)' style={{ width: 260 }} />
                       </Form.Item>
+
                       <Form.Item
-                        name="code"
-                        rules={[{ required: true, message: "Code required" }]}
+                        name='category'
+                        rules={[{ required: true, message: 'Category required' }]}
                       >
-                        <Input placeholder="Code (e.g. ANNUAL)" style={{ width: 200 }} />
+                        <Select
+                          style={{ width: 140 }}
+                          options={[
+                            { label: 'PAID', value: 'PAID' },
+                            { label: 'UNPAID', value: 'UNPAID' },
+                          ]}
+                        />
                       </Form.Item>
+
+                      <Form.Item name='active' valuePropName='checked'>
+                        <Switch checkedChildren='Active' unCheckedChildren='Inactive' />
+                      </Form.Item>
+
                       <Form.Item>
-                        <Button type="primary" disabled={!canEditSettings} onClick={() => void addLeaveType()}>
+                        <Button type='primary' disabled={!canEditSettings} onClick={() => void handleCreateLeaveType()}>
                           Add Type
                         </Button>
                       </Form.Item>
                     </Form>
                   </Space>
 
-                  <Table rowKey="id" dataSource={leaveTypes} columns={leaveTypeColumns} pagination={false} />
+                  <Table
+                    rowKey='id'
+                    dataSource={leaveTypes}
+                    pagination={false}
+                    columns={[
+                      { title: 'Name', dataIndex: 'name' },
+                      { title: 'Category', dataIndex: 'category' },
+                      {
+                        title: 'Status',
+                        render: (_: unknown, row: LeaveTypeDto) => (
+                          <Badge status={row.active ? 'success' : 'default'} text={row.active ? 'Active' : 'Inactive'} />
+                        ),
+                      },
+                      {
+                        title: 'Action',
+                        render: (_: unknown, row: LeaveTypeDto) => (
+                          <Space>
+                            <Button
+                              size='small'
+                              disabled={!canEditSettings}
+                              onClick={async () => {
+                                await updateLeaveType(row.id, { active: !row.active });
+                                await loadLeaveSettings();
+                              }}
+                            >
+                              {row.active ? 'Disable' : 'Enable'}
+                            </Button>
+                            <Popconfirm
+                              title='Delete this leave type?'
+                              disabled={!canEditSettings}
+                              onConfirm={async () => {
+                                await deleteLeaveType(row.id);
+                                await loadLeaveSettings();
+                              }}
+                            >
+                              <Button danger size='small' disabled={!canEditSettings}>Delete</Button>
+                            </Popconfirm>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
                 </Card>
               )}
 
-              {settingsTab === "balances" && (
-                <Card title="Leave Balance" style={{ borderRadius: 16 }}>
-                  <Typography.Paragraph type="secondary">
+              {settingsTab === 'balances' && (
+                <Card title='Leave Balance' style={{ borderRadius: 16 }} loading={settingLoading}>
+                  <Typography.Paragraph type='secondary'>
                     Examples: Monthly 2 Days with carry forward, or Yearly 14 Days.
                   </Typography.Paragraph>
 
-                  <Space style={{ width: "100%", marginBottom: 16 }} wrap>
-                    <Form form={balanceForm} layout="inline" initialValues={{ period: "MONTHLY", carryForward: true }}>
+                  <Space style={{ width: '100%', marginBottom: 16 }} wrap>
+                    <Form form={balanceForm} layout='inline' initialValues={{ period: 'MONTHLY', active: true }}>
                       <Form.Item
-                        name="leaveTypeCode"
-                        rules={[{ required: true, message: "Leave type required" }]}
+                        name='leaveTypeId'
+                        rules={[{ required: true, message: 'Leave type required' }]}
                       >
                         <Select
-                          placeholder="Leave type"
+                          placeholder='Leave type'
                           style={{ width: 220 }}
-                          options={leaveTypes.map((item) => ({ label: item.name, value: item.code }))}
+                          options={leaveTypes.map((item) => ({ label: item.name, value: item.id }))}
                         />
                       </Form.Item>
 
                       <Form.Item
-                        name="period"
-                        rules={[{ required: true, message: "Period required" }]}
+                        name='period'
+                        rules={[{ required: true, message: 'Period required' }]}
                       >
                         <Select
                           style={{ width: 140 }}
                           options={[
-                            { label: "Monthly", value: "MONTHLY" },
-                            { label: "Yearly", value: "YEARLY" },
+                            { label: 'MONTHLY', value: 'MONTHLY' },
+                            { label: 'YEARLY', value: 'YEARLY' },
                           ]}
                         />
                       </Form.Item>
 
                       <Form.Item
-                        name="days"
-                        rules={[{ required: true, message: "Days required" }]}
+                        name='days'
+                        rules={[{ required: true, message: 'Days required' }]}
                       >
-                        <InputNumber min={0} max={365} placeholder="Days" style={{ width: 120 }} />
+                        <InputNumber min={0} max={365} placeholder='Days' style={{ width: 120 }} />
                       </Form.Item>
 
-                      <Form.Item name="carryForward" valuePropName="checked">
-                        <Switch checkedChildren="Carry Yes" unCheckedChildren="Carry No" />
+                      <Form.Item name='active' valuePropName='checked'>
+                        <Switch checkedChildren='Active' unCheckedChildren='Inactive' />
                       </Form.Item>
 
                       <Form.Item>
-                        <Button type="primary" disabled={!canEditSettings} onClick={() => void addLeaveBalance()}>
+                        <Button type='primary' disabled={!canEditSettings} onClick={() => void handleCreateBalance()}>
                           Add Balance
                         </Button>
                       </Form.Item>
                     </Form>
                   </Space>
 
-                  <Table rowKey="id" dataSource={leaveBalances} columns={leaveBalanceColumns} pagination={false} />
+                  <Table
+                    rowKey='id'
+                    dataSource={leaveBalances}
+                    pagination={false}
+                    columns={[
+                      {
+                        title: 'Leave Type',
+                        render: (_: unknown, row: LeaveBalanceSettingDto) => row.leaveType?.name || row.leaveTypeId,
+                      },
+                      { title: 'Period', dataIndex: 'period' },
+                      {
+                        title: 'Days',
+                        render: (_: unknown, row: LeaveBalanceSettingDto) => `${Number(row.days)} Day${Number(row.days) > 1 ? 's' : ''}`,
+                      },
+                      {
+                        title: 'Status',
+                        render: (_: unknown, row: LeaveBalanceSettingDto) => (
+                          <Tag color={row.active ? 'green' : 'default'}>{row.active ? 'Active' : 'Inactive'}</Tag>
+                        ),
+                      },
+                      {
+                        title: 'Action',
+                        render: (_: unknown, row: LeaveBalanceSettingDto) => (
+                          <Space>
+                            <Button
+                              size='small'
+                              disabled={!canEditSettings}
+                              onClick={async () => {
+                                await updateLeaveBalanceSetting(row.id, { active: !row.active });
+                                await loadLeaveSettings();
+                              }}
+                            >
+                              {row.active ? 'Disable' : 'Enable'}
+                            </Button>
+                            <Popconfirm
+                              title='Delete this leave balance setting?'
+                              disabled={!canEditSettings}
+                              onConfirm={async () => {
+                                await deleteLeaveBalanceSetting(row.id);
+                                await loadLeaveSettings();
+                              }}
+                            >
+                              <Button danger size='small' disabled={!canEditSettings}>Delete</Button>
+                            </Popconfirm>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
                 </Card>
               )}
 
-              {settingsTab === "approvers" && (
-                <Card title="Leave Approvers" style={{ borderRadius: 16 }}>
-                  <Typography.Paragraph type="secondary">
+              {settingsTab === 'approvers' && (
+                <Card title='Leave Approvers' style={{ borderRadius: 16 }} loading={settingLoading}>
+                  <Typography.Paragraph type='secondary'>
                     Multiple approvers are supported for company leave approval.
                   </Typography.Paragraph>
 
-                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                    <Select
-                      mode="multiple"
-                      allowClear
-                      disabled={!canEditSettings}
-                      value={leaveApproverIds}
-                      onChange={setLeaveApproverIds}
-                      style={{ width: "100%", maxWidth: 720 }}
-                      placeholder="Select leave approvers"
-                      options={companyUsers.map((user) => ({
-                        value: user.id,
-                        label: `${user.name || user.username || user.id} (${user.role || "-"})`,
-                      }))}
-                    />
+                  <Space style={{ width: '100%', marginBottom: 16 }} wrap>
+                    <Form form={approverForm} layout='inline' initialValues={{ active: true }}>
+                      <Form.Item
+                        name='employeeId'
+                        rules={[{ required: true, message: 'Approver required' }]}
+                      >
+                        <Select
+                          placeholder='Select approver employee'
+                          style={{ width: 320 }}
+                          options={companyUsers.map((user) => ({
+                            value: user.id,
+                            label: `${user.name || user.username || user.id} (${user.role || '-'})`,
+                          }))}
+                        />
+                      </Form.Item>
 
-                    <Table
-                      rowKey="id"
-                      dataSource={approverRows}
-                      pagination={false}
-                      columns={[
-                        { title: "Name", dataIndex: "name" },
-                        { title: "Role", dataIndex: "role" },
-                        {
-                          title: "Action",
-                          render: (_: unknown, row: { id: string }) => (
+                      <Form.Item name='active' valuePropName='checked'>
+                        <Switch checkedChildren='Active' unCheckedChildren='Inactive' />
+                      </Form.Item>
+
+                      <Form.Item>
+                        <Button type='primary' disabled={!canEditSettings} onClick={() => void handleCreateApprover()}>
+                          Add Approver
+                        </Button>
+                      </Form.Item>
+                    </Form>
+                  </Space>
+
+                  <Table
+                    rowKey='id'
+                    dataSource={leaveApprovers}
+                    pagination={false}
+                    columns={[
+                      {
+                        title: 'Name',
+                        render: (_: unknown, row: LeaveApproverDto) =>
+                          row.employee?.name || row.employee?.user?.username || row.employeeId,
+                      },
+                      {
+                        title: 'Role/Position',
+                        render: (_: unknown, row: LeaveApproverDto) => row.employee?.position || '-',
+                      },
+                      {
+                        title: 'Status',
+                        render: (_: unknown, row: LeaveApproverDto) => (
+                          <Tag color={row.active ? 'green' : 'default'}>{row.active ? 'Active' : 'Inactive'}</Tag>
+                        ),
+                      },
+                      {
+                        title: 'Action',
+                        render: (_: unknown, row: LeaveApproverDto) => (
+                          <Space>
+                            <Button
+                              size='small'
+                              disabled={!canEditSettings}
+                              onClick={async () => {
+                                await updateLeaveApprover(row.id, { active: !row.active });
+                                await loadLeaveSettings();
+                              }}
+                            >
+                              {row.active ? 'Disable' : 'Enable'}
+                            </Button>
                             <Button
                               danger
-                              size="small"
+                              size='small'
                               disabled={!canEditSettings}
-                              onClick={() => setLeaveApproverIds((prev) => prev.filter((id) => id !== row.id))}
+                              onClick={async () => {
+                                await deleteLeaveApprover(row.id);
+                                await loadLeaveSettings();
+                              }}
                             >
                               Remove
                             </Button>
-                          ),
-                        },
-                      ]}
-                      locale={{ emptyText: "No leave approvers configured" }}
-                    />
-                  </Space>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                    locale={{ emptyText: 'No leave approvers configured' }}
+                  />
                 </Card>
               )}
             </>

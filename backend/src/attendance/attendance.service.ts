@@ -1208,6 +1208,8 @@ export class AttendanceService {
       },
     })) as AttendanceLeaveRow[];
 
+    const leaveDaySet = new Set<string>();
+
     for (const leave of approvedLeaves) {
       const from = this.normalizeDayStart(leave.startDate);
       const to = this.normalizeDayEnd(leave.endDate);
@@ -1216,6 +1218,7 @@ export class AttendanceService {
 
       for (const day of this.eachDay(start, end)) {
         const key = `${leave.employeeId}:${this.dateKey(day)}`;
+        leaveDaySet.add(key);
         if (existingByEmployeeDay.has(key)) continue;
 
         existingByEmployeeDay.add(key);
@@ -1341,9 +1344,20 @@ export class AttendanceService {
     );
 
     const withTimeline = events.map((row) => {
-      if (row.status === 'LEAVE') {
+      const workDateKey = this.dateKey(new Date(row.workDate || row.date));
+      const leaveMatched = leaveDaySet.has(`${row.employeeId}:${workDateKey}`);
+
+      if (leaveMatched || row.status === 'LEAVE') {
         return {
           ...row,
+          status: 'LEAVE',
+          anomaly: 'NORMAL',
+          isLate: false,
+          isMissing: false,
+          lateMinutes: 0,
+          lateHours: 0,
+          earlyLeaveMinutes: 0,
+          earlyLeaveHours: 0,
           anomalyList: ['LEAVE'],
           timeline: [],
         };

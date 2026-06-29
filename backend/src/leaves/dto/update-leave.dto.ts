@@ -10,7 +10,7 @@ export class UpdateLeaveDto {
   endDate?: string;
 
   @IsOptional()
-  @IsEnum(['ANNUAL', 'SICK', 'PERSONAL', 'OVERTIME', 'OTHER'])
+  @IsString()
   type?: string;
 
   @IsOptional()

@@ -36,6 +36,9 @@ model Company {
   rosterDetails  RosterDetail[] @relation("companyRosterDetails")
   attendances    Attendance[]
   leaves         Leave[]
+  leaveTypes     LeaveType[]
+  leaveBalances  LeaveBalanceSetting[]
+  leaveApprovers LeaveApprover[]
   holidays       Holiday[]
   invoices       Invoice[] @relation("companyInvoices")
   featureAccess  CompanyFeatureAccess?
@@ -141,6 +144,7 @@ model Employee {
   rosters     Roster[]
   attendances Attendance[]
   leaves      Leave[]
+  leaveApprovals LeaveApprover[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -328,6 +332,54 @@ model Leave {
   company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, status])
+}
+
+model LeaveType {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  category  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  balances LeaveBalanceSetting[]
+
+  @@unique([companyId, name])
+  @@index([companyId, active])
+}
+
+model LeaveBalanceSetting {
+  id          String   @id @default(uuid())
+  companyId   String
+  leaveTypeId String
+  period      String
+  days        Decimal  @db.Decimal(5, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, leaveTypeId, period])
+  @@index([companyId, active])
+}
+
+model LeaveApprover {
+  id         String   @id @default(uuid())
+  companyId  String
+  employeeId String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, employeeId])
+  @@index([companyId, active])
 }
 
 model Holiday {
