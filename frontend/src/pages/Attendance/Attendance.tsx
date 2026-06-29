@@ -110,6 +110,50 @@ function deriveShiftDate(event: AttendanceEvent) {
   return "-";
 }
 
+function getCompanyTimezoneFromStorage() {
+  const directTimezone = localStorage.getItem("company_timezone") || localStorage.getItem("timezone");
+  if (directTimezone) return directTimezone;
+
+  const userRaw = localStorage.getItem("xtten_user");
+  if (!userRaw) return undefined;
+
+  try {
+    const user = JSON.parse(userRaw) as {
+      timezone?: string;
+      companyTimezone?: string;
+      company?: { timezone?: string };
+    };
+    return user.company?.timezone || user.companyTimezone || user.timezone;
+  } catch {
+    return undefined;
+  }
+}
+
+function getTodayByTimezone(timezone?: string) {
+  if (!timezone) return dayjs();
+
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+
+    if (year && month && day) {
+      return dayjs(`${year}-${month}-${day}`);
+    }
+  } catch {
+    // Fallback to browser local date when timezone is missing/invalid.
+  }
+
+  return dayjs();
+}
+
 function renderStatusBadge(status: string, anomalyList: string[]) {
   const source = `${status} ${anomalyList.join(" ")}`.toUpperCase();
 
@@ -153,7 +197,9 @@ export default function Attendance() {
   const [rosters, setRosters] = useState<RosterRecord[]>([]);
   const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(() => [dayjs().startOf("month"), dayjs().endOf("day")]);
   const [employeeFilter, setEmployeeFilter] = useState<string | undefined>(undefined);
-  const [shiftDateFilter, setShiftDateFilter] = useState<dayjs.Dayjs | undefined>(undefined);
+  const [shiftDateFilter, setShiftDateFilter] = useState<dayjs.Dayjs | undefined>(() =>
+    getTodayByTimezone(getCompanyTimezoneFromStorage()),
+  );
   const [scenarioEmployeeId, setScenarioEmployeeId] = useState<string | undefined>(() => currentEmployeeId || undefined);
   const [scenarioDate, setScenarioDate] = useState(dayjs());
 
@@ -460,6 +506,8 @@ export default function Attendance() {
                     value={shiftDateFilter}
                     onChange={(value) => setShiftDateFilter(value || undefined)}
                   />
+                  <Button onClick={() => setShiftDateFilter(dayjs())}>Today</Button>
+                  <Button onClick={() => setShiftDateFilter(undefined)}>Clear / All</Button>
                   <Select
                     allowClear
                     style={{ width: 260 }}
