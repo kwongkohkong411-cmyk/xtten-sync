@@ -10,6 +10,9 @@ import {
   SafetyCertificateOutlined,
   FundViewOutlined,
   DownloadOutlined,
+  GlobalOutlined,
+  CreditCardOutlined,
+  CrownOutlined,
 } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import { hasPermission, getCurrentUser } from "../../utils/auth";
@@ -49,6 +52,37 @@ export default function Sidebar() {
         { key: "/dashboard/overview", label: "Overview", required: null },
         { key: "/dashboard/analytics", label: "Analytics", required: null },
         { key: "/dashboard/realtime", label: "Real-time Status", required: null },
+      ],
+    },
+    {
+      key: "organization",
+      icon: <GlobalOutlined />,
+      label: "Organization",
+      required: "organization:view",
+      children: [
+        { key: "/organization", label: "Organization Settings", required: "organization:view" },
+        { key: "/organization/companies", label: "Manage Companies", required: "organization:view" },
+      ],
+    },
+    {
+      key: "billing",
+      icon: <CreditCardOutlined />,
+      label: "Billing",
+      required: "billing:view",
+      children: [
+        { key: "/billing", label: "Billing Overview", required: "billing:view" },
+        { key: "/billing/subscriptions", label: "Subscriptions", required: "billing:view" },
+        { key: "/billing/invoices", label: "Invoices", required: "billing:view" },
+      ],
+    },
+    {
+      key: "admin",
+      icon: <CrownOutlined />,
+      label: "Super Admin",
+      required: "organization:view",
+      children: [
+        { key: "/admin/system", label: "System Configuration", required: "organization:view" },
+        { key: "/admin/audit", label: "Audit Logs", required: "organization:view" },
       ],
     },
     {
