@@ -76,6 +76,10 @@ export class EventControlPlaneService {
   private readonly repairCooldowns = new Map<string, number>();
   private readonly lastRecordedDecisionFingerprint = new Map<string, string>();
   private readonly replayAttempts = new Map<string, number[]>();
+  private readonly policyWarnIntervalMs = 60_000;
+  private lastPolicyWarnAt = 0;
+  private lastPolicyWarnMessage = '';
+  private suppressedPolicyWarnCount = 0;
   private manualFreeze: ManualFreezeState = {
     enabled: false,
     updatedAt: new Date().toISOString(),
@@ -90,6 +94,28 @@ export class EventControlPlaneService {
     private readonly prisma: PrismaService,
     private readonly governancePolicy: EventGovernancePolicyService,
   ) {}
+
+  private warnPolicyRateLimited(message: string) {
+    const now = Date.now();
+    const isSameMessage = this.lastPolicyWarnMessage === message;
+
+    if (
+      !isSameMessage ||
+      now - this.lastPolicyWarnAt >= this.policyWarnIntervalMs
+    ) {
+      const suffix =
+        this.suppressedPolicyWarnCount > 0
+          ? ` (suppressed ${this.suppressedPolicyWarnCount} similar warn logs)`
+          : '';
+      this.logger.warn(`${message}${suffix}`);
+      this.lastPolicyWarnAt = now;
+      this.lastPolicyWarnMessage = message;
+      this.suppressedPolicyWarnCount = 0;
+      return;
+    }
+
+    this.suppressedPolicyWarnCount += 1;
+  }
 
   private createDecision(
     metrics: EventSystemMetrics,
@@ -408,7 +434,7 @@ export class EventControlPlaneService {
       decision.pauseAutoRepair ||
       decision.freezeDlqReplay
     ) {
-      this.logger.warn(
+      this.warnPolicyRateLimited(
         `Event policy: throttle=${decision.throttleQueue} pauseRepair=${decision.pauseAutoRepair} freezeDlq=${decision.freezeDlqReplay} reason=${decision.reason.join(',')}`,
       );
     }

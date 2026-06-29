@@ -31,6 +31,14 @@ export class EventQueueConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly maxQueueConcurrency = 2;
   private readonly maxBatchSize = 10;
   private readonly maxRunningWindowMs = 60_000;
+  private readonly dbBackoffScheduleMs = [5_000, 15_000, 30_000, 60_000] as const;
+  private dbBackoffIndex = 0;
+  private nextPollAt = 0;
+  private readonly warnIntervalMs = 60_000;
+  private lastWarnAt = 0;
+  private suppressedWarnCount = 0;
+  private lastPauseWarnAt = 0;
+  private pauseWarnSuppressedCount = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -44,6 +52,71 @@ export class EventQueueConsumer implements OnModuleInit, OnModuleDestroy {
     if (error instanceof Error) return error.message;
     if (typeof error === 'string') return error;
     return 'Unknown queue error';
+  }
+
+  private isDbUnreachableError(error: unknown) {
+    if (!error || typeof error !== 'object') return false;
+    const candidate = error as { code?: string; message?: string };
+    if (candidate.code === 'P1001') return true;
+    const message = String(candidate.message || '').toLowerCase();
+    return message.includes("can't reach database server");
+  }
+
+  private warnRateLimited(message: string) {
+    const now = Date.now();
+    if (now - this.lastWarnAt >= this.warnIntervalMs) {
+      const suffix =
+        this.suppressedWarnCount > 0
+          ? ` (suppressed ${this.suppressedWarnCount} similar warn logs)`
+          : '';
+      this.logger.warn(`${message}${suffix}`);
+      this.lastWarnAt = now;
+      this.suppressedWarnCount = 0;
+      return;
+    }
+    this.suppressedWarnCount += 1;
+  }
+
+  private warnPauseRateLimited(message: string) {
+    const now = Date.now();
+    if (now - this.lastPauseWarnAt >= this.warnIntervalMs) {
+      const suffix =
+        this.pauseWarnSuppressedCount > 0
+          ? ` (suppressed ${this.pauseWarnSuppressedCount} similar warn logs)`
+          : '';
+      this.logger.warn(`${message}${suffix}`);
+      this.lastPauseWarnAt = now;
+      this.pauseWarnSuppressedCount = 0;
+      return;
+    }
+    this.pauseWarnSuppressedCount += 1;
+  }
+
+  private scheduleDbBackoff(error: unknown) {
+    const delay =
+      this.dbBackoffScheduleMs[
+        Math.min(this.dbBackoffIndex, this.dbBackoffScheduleMs.length - 1)
+      ];
+    this.nextPollAt = Date.now() + delay;
+    if (this.dbBackoffIndex < this.dbBackoffScheduleMs.length - 1) {
+      this.dbBackoffIndex += 1;
+    }
+
+    this.warnRateLimited(
+      `Queue consumer degraded: database unreachable (P1001). Backing off ${Math.round(
+        delay / 1000,
+      )}s. error=${this.errorMessage(error)}`,
+    );
+  }
+
+  private resetDbBackoffIfNeeded() {
+    if (this.dbBackoffIndex === 0 && this.nextPollAt === 0) {
+      return;
+    }
+
+    this.dbBackoffIndex = 0;
+    this.nextPollAt = 0;
+    this.logger.log('Queue consumer connectivity recovered. Backoff reset.');
   }
 
   onModuleInit() {
@@ -98,29 +171,70 @@ export class EventQueueConsumer implements OnModuleInit, OnModuleDestroy {
   private async processBatch() {
     if (this.running) return;
 
-    const health = await this.infrastructure.getHealth();
+    if (this.nextPollAt && Date.now() < this.nextPollAt) {
+      return;
+    }
+
+    let health;
+    try {
+      health = await this.infrastructure.getHealth();
+    } catch (error: unknown) {
+      if (this.isDbUnreachableError(error)) {
+        this.scheduleDbBackoff(error);
+        return;
+      }
+      throw error;
+    }
+
     if (!health.queue || !health.projection) {
-      this.logger.warn(
+      this.warnPauseRateLimited(
         'Queue consumer paused because queue/projection tables are not ready yet. Apply migrations first.',
       );
       return;
     }
 
-    const shouldThrottle = await this.controlPlane.shouldThrottleQueue();
+    let shouldThrottle = false;
+    try {
+      shouldThrottle = await this.controlPlane.shouldThrottleQueue();
+    } catch (error: unknown) {
+      if (this.isDbUnreachableError(error)) {
+        this.scheduleDbBackoff(error);
+        return;
+      }
+      throw error;
+    }
+
     if (shouldThrottle) {
-      const metrics = await this.controlPlane.getDecision();
-      this.logger.warn(
-        `Queue throttled depth=${metrics.metrics.eventQueueDepth} retry=${metrics.metrics.retryCountLastHour} processed=${metrics.metrics.eventsProcessedLastHour}`,
-      );
+      try {
+        const metrics = await this.controlPlane.getDecision();
+        this.warnPauseRateLimited(
+          `Queue throttled depth=${metrics.metrics.eventQueueDepth} retry=${metrics.metrics.retryCountLastHour} processed=${metrics.metrics.eventsProcessedLastHour}`,
+        );
+      } catch (error: unknown) {
+        if (this.isDbUnreachableError(error)) {
+          this.scheduleDbBackoff(error);
+          return;
+        }
+        throw error;
+      }
       return;
     }
 
-    const queueDepth = await this.prisma.employeeEventQueue.count({
-      where: {
-        status: 'PENDING',
-        availableAt: { lte: new Date() },
-      },
-    });
+    let queueDepth = 0;
+    try {
+      queueDepth = await this.prisma.employeeEventQueue.count({
+        where: {
+          status: 'PENDING',
+          availableAt: { lte: new Date() },
+        },
+      });
+    } catch (error: unknown) {
+      if (this.isDbUnreachableError(error)) {
+        this.scheduleDbBackoff(error);
+        return;
+      }
+      throw error;
+    }
 
     if (queueDepth >= 5000) {
       this.logger.error(
@@ -154,7 +268,12 @@ export class EventQueueConsumer implements OnModuleInit, OnModuleDestroy {
       await this.inBatches(rows, concurrency, async (row) =>
         this.processOne(row),
       );
+      this.resetDbBackoffIfNeeded();
     } catch (error: unknown) {
+      if (this.isDbUnreachableError(error)) {
+        this.scheduleDbBackoff(error);
+        return;
+      }
       this.logger.error(`Queue batch failed: ${this.errorMessage(error)}`);
     } finally {
       this.running = false;
