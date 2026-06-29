@@ -189,6 +189,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 export default function Attendance() {
+  const resolveShiftDateToday = useCallback(() => getTodayByTimezone(getCompanyTimezoneFromStorage()), []);
   const currentEmployeeId = localStorage.getItem("employee_id") || "";
   const currentCompanyId = localStorage.getItem("company_id") || undefined;
   const [loading, setLoading] = useState(false);
@@ -198,7 +199,7 @@ export default function Attendance() {
   const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(() => [dayjs().startOf("month"), dayjs().endOf("day")]);
   const [employeeFilter, setEmployeeFilter] = useState<string | undefined>(undefined);
   const [shiftDateFilter, setShiftDateFilter] = useState<dayjs.Dayjs | undefined>(() =>
-    getTodayByTimezone(getCompanyTimezoneFromStorage()),
+    resolveShiftDateToday(),
   );
   const [scenarioEmployeeId, setScenarioEmployeeId] = useState<string | undefined>(() => currentEmployeeId || undefined);
   const [scenarioDate, setScenarioDate] = useState(dayjs());
@@ -506,7 +507,7 @@ export default function Attendance() {
                     value={shiftDateFilter}
                     onChange={(value) => setShiftDateFilter(value || undefined)}
                   />
-                  <Button onClick={() => setShiftDateFilter(dayjs())}>Today</Button>
+                  <Button onClick={() => setShiftDateFilter(resolveShiftDateToday())}>Today</Button>
                   <Button onClick={() => setShiftDateFilter(undefined)}>Clear / All</Button>
                   <Select
                     allowClear
