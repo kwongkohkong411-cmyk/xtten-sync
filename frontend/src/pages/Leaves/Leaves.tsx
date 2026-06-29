@@ -3,6 +3,7 @@ import {
   Badge,
   Button,
   Card,
+  Col,
   DatePicker,
   Empty,
   Form,
@@ -10,6 +11,7 @@ import {
   InputNumber,
   message,
   Popconfirm,
+  Row,
   Select,
   Space,
   Switch,
@@ -61,6 +63,9 @@ type UserOption = {
   username?: string;
   role?: string;
   companyId?: string | null;
+  employee?: {
+    id?: string;
+  } | null;
 };
 
 function formatRange(startDate: string, endDate: string) {
@@ -90,6 +95,10 @@ export default function Leaves() {
   const [leaveApprovers, setLeaveApprovers] = useState<LeaveApproverDto[]>([]);
 
   const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [teamFilter, setTeamFilter] = useState<string | undefined>(undefined);
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState<string | undefined>(undefined);
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | undefined>(undefined);
   const [rootTab, setRootTab] = useState<'requests' | 'settings'>('requests');
 
   const [applyForm] = Form.useForm();
@@ -170,19 +179,50 @@ export default function Leaves() {
     return users.filter((user) => !user.companyId || user.companyId === currentCompanyId);
   }, [users, currentCompanyId]);
 
+  const employeeLookup = useMemo(() => {
+    const map = new Map<string, { name: string; team: string }>();
+    for (const user of companyUsers) {
+      const employeeId = user.employee?.id;
+      if (!employeeId) continue;
+      map.set(employeeId, {
+        name: user.name || user.username || employeeId,
+        team: 'N/A',
+      });
+    }
+    return map;
+  }, [companyUsers]);
+
   const filteredAllRequests = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
-    if (!keyword) return leaves;
-
     return leaves.filter((item) => {
+      const employeeMeta = employeeLookup.get(item.employeeId || '');
+      const matchesKeyword = !keyword || [
+        item.type,
+        item.status,
+        item.reason,
+        formatRange(item.startDate, item.endDate),
+        employeeMeta?.name,
+      ]
+        .map((value) => String(value || '').toLowerCase())
+        .some((value) => value.includes(keyword));
+
+      const matchesStatus = !statusFilter || item.status === statusFilter;
+      const matchesTeam = !teamFilter || employeeMeta?.team === teamFilter;
+      const matchesType = !leaveTypeFilter || item.type === leaveTypeFilter;
+      const matchesDate =
+        !dateRange ||
+        (dayjs(item.startDate).startOf('day').valueOf() >= dateRange[0].startOf('day').valueOf() &&
+          dayjs(item.endDate).endOf('day').valueOf() <= dateRange[1].endOf('day').valueOf());
+
       return (
-        item.type?.toLowerCase().includes(keyword) ||
-        item.status?.toLowerCase().includes(keyword) ||
-        item.reason?.toLowerCase().includes(keyword) ||
-        formatRange(item.startDate, item.endDate).toLowerCase().includes(keyword)
+        matchesKeyword &&
+        matchesStatus &&
+        matchesTeam &&
+        matchesType &&
+        matchesDate
       );
     });
-  }, [leaves, searchText]);
+  }, [leaves, searchText, employeeLookup, statusFilter, teamFilter, leaveTypeFilter, dateRange]);
 
   const filteredPendingRequests = useMemo(
     () => filteredAllRequests.filter((item) => item.status === 'PENDING'),
@@ -279,18 +319,41 @@ export default function Leaves() {
   };
 
   const requestColumns = [
-    { title: 'Type', dataIndex: 'type', key: 'type' },
+    {
+      title: 'Employee',
+      key: 'employee',
+      render: (_: unknown, record: LeaveRequest) => employeeLookup.get(record.employeeId || '')?.name || 'N/A',
+    },
+    {
+      title: 'Team',
+      key: 'team',
+      render: (_: unknown, record: LeaveRequest) => employeeLookup.get(record.employeeId || '')?.team || 'N/A',
+    },
+    { title: 'Leave Type', dataIndex: 'type', key: 'type' },
     {
       title: 'Period',
       key: 'period',
       render: (_: unknown, record: LeaveRequest) => formatRange(record.startDate, record.endDate),
     },
-    { title: 'Reason', dataIndex: 'reason', key: 'reason', render: (v: string) => v || '-' },
+    {
+      title: 'Days',
+      key: 'days',
+      render: (_: unknown, record: LeaveRequest) => {
+        const start = dayjs(record.startDate);
+        const end = dayjs(record.endDate);
+        return Math.max(end.diff(start, 'day') + 1, 1);
+      },
+    },
     {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      render: (status: LeaveRequest['status']) => <Tag color={getStatusColor(status)}>{status}</Tag>,
+      render: (status: LeaveRequest['status']) => <Badge color={getStatusColor(status)} text={status} />,
+    },
+    {
+      title: 'Approver',
+      key: 'approver',
+      render: () => companyUsers.find((user) => user.role === 'COMPANY_ADMIN')?.name || 'N/A',
     },
     {
       title: 'Action',
@@ -303,6 +366,7 @@ export default function Leaves() {
             <Button
               type='primary'
               size='small'
+              style={{ background: '#16a34a', borderColor: '#16a34a' }}
               disabled={record.status === 'APPROVED'}
               onClick={() => changeLeaveStatus(record.id, 'APPROVED')}
             >
@@ -356,13 +420,60 @@ export default function Leaves() {
 
       {rootTab === 'requests' ? (
         <>
-          <div style={{ marginBottom: 16 }}>
-            <SearchBar
-              placeholder='Search leave requests...'
-              onChange={(value) => setSearchText(value)}
-              width={360}
-            />
-          </div>
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+            <Col xs={24} md={6}><Card><Typography.Text type='secondary'>Total Requests</Typography.Text><Typography.Title level={4}>{filteredAllRequests.length}</Typography.Title></Card></Col>
+            <Col xs={24} md={6}><Card><Typography.Text type='secondary'>Pending</Typography.Text><Typography.Title level={4}>{filteredAllRequests.filter((item) => item.status === 'PENDING').length}</Typography.Title></Card></Col>
+            <Col xs={24} md={6}><Card><Typography.Text type='secondary'>Approved</Typography.Text><Typography.Title level={4}>{filteredAllRequests.filter((item) => item.status === 'APPROVED').length}</Typography.Title></Card></Col>
+            <Col xs={24} md={6}><Card><Typography.Text type='secondary'>Rejected</Typography.Text><Typography.Title level={4}>{filteredAllRequests.filter((item) => item.status === 'REJECTED').length}</Typography.Title></Card></Col>
+          </Row>
+
+          <Card style={{ marginBottom: 16, borderRadius: 16 }}>
+            <Space wrap>
+              <SearchBar
+                placeholder='Search employee...'
+                onChange={(value) => setSearchText(value)}
+                width={280}
+              />
+              <Select
+                allowClear
+                placeholder='Status'
+                style={{ width: 160 }}
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { label: 'Pending', value: 'PENDING' },
+                  { label: 'Approved', value: 'APPROVED' },
+                  { label: 'Rejected', value: 'REJECTED' },
+                ]}
+              />
+              <Select
+                allowClear
+                placeholder='Team'
+                style={{ width: 160 }}
+                value={teamFilter}
+                onChange={setTeamFilter}
+                options={[{ label: 'N/A', value: 'N/A' }]}
+              />
+              <Select
+                allowClear
+                placeholder='Leave Type'
+                style={{ width: 180 }}
+                value={leaveTypeFilter}
+                onChange={setLeaveTypeFilter}
+                options={leaveTypes.map((item) => ({ label: item.name, value: item.name }))}
+              />
+              <DatePicker.RangePicker
+                value={dateRange}
+                onChange={(value) => {
+                  if (value && value[0] && value[1]) {
+                    setDateRange([value[0], value[1]]);
+                  } else {
+                    setDateRange(undefined);
+                  }
+                }}
+              />
+            </Space>
+          </Card>
 
           <Card title='Apply Leave' style={{ borderRadius: 16, marginBottom: 16 }}>
             {!canApplyLeave ? (

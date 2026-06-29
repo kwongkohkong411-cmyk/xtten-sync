@@ -452,6 +452,15 @@ export default function Attendance() {
     };
   }, [events, rosters, scenarioDate, scenarioEmployeeId]);
 
+  const attendanceKpi = useMemo(() => {
+    const statuses = adminRows.map((row) => String(row.status || '').toUpperCase());
+    const present = statuses.filter((status) => status === 'PRESENT').length;
+    const late = statuses.filter((status) => status === 'LATE').length;
+    const absent = statuses.filter((status) => status === 'ABSENT' || status === 'MISSING').length;
+    const onLeave = statuses.filter((status) => status === 'LEAVE').length;
+    return { present, late, absent, onLeave };
+  }, [adminRows]);
+
   const handleExportCsv = useCallback(() => {
     const headers = [
       "Shift Date",
@@ -545,6 +554,13 @@ export default function Attendance() {
         </Space>
       </Card>
 
+      <Space style={{ width: '100%' }} size={16} wrap>
+        <Card style={{ minWidth: 180 }}><Text type="secondary">Present</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{attendanceKpi.present}</div></Card>
+        <Card style={{ minWidth: 180 }}><Text type="secondary">Late</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{attendanceKpi.late}</div></Card>
+        <Card style={{ minWidth: 180 }}><Text type="secondary">Absent</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{attendanceKpi.absent}</div></Card>
+        <Card style={{ minWidth: 180 }}><Text type="secondary">On Leave</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{attendanceKpi.onLeave}</div></Card>
+      </Space>
+
       <Tabs
         defaultActiveKey="self"
         items={[
@@ -612,33 +628,40 @@ export default function Attendance() {
             key: "admin",
             label: "Admin / HR View",
             children: (
-              <Card title="Employee Attendance Details">
+              <>
+                <Card style={{ marginBottom: 16 }}>
+                  <Space style={{ marginBottom: 0 }} wrap>
+                    <DatePicker
+                      allowClear
+                      placeholder="Date"
+                      value={shiftDateFilter}
+                      onChange={(value) => setShiftDateFilter(value || undefined)}
+                    />
+                    <Button onClick={() => setShiftDateFilter(resolveShiftDateToday())}>Today</Button>
+                    <Button onClick={() => setShiftDateFilter(undefined)}>Clear / All</Button>
+                    <Select
+                      allowClear
+                      style={{ width: 220 }}
+                      placeholder="Team"
+                      value={teamFilter}
+                      onChange={setTeamFilter}
+                      options={teamOptions}
+                    />
+                    <Select
+                      allowClear
+                      style={{ width: 260 }}
+                      placeholder="Employee"
+                      value={employeeFilter}
+                      onChange={setEmployeeFilter}
+                      options={employeeOptions}
+                    />
+                    <Button type="primary" onClick={handleExportCsv}>Export CSV</Button>
+                  </Space>
+                </Card>
+
+                <Card title="Attendance Records">
                 <Space style={{ marginBottom: 12 }} wrap>
-                  <DatePicker
-                    allowClear
-                    placeholder="Shift Date"
-                    value={shiftDateFilter}
-                    onChange={(value) => setShiftDateFilter(value || undefined)}
-                  />
-                  <Button onClick={() => setShiftDateFilter(resolveShiftDateToday())}>Today</Button>
-                  <Button onClick={() => setShiftDateFilter(undefined)}>Clear / All</Button>
-                  <Button type="primary" onClick={handleExportCsv}>Export CSV</Button>
-                  <Select
-                    allowClear
-                    style={{ width: 220 }}
-                    placeholder="Filter Team"
-                    value={teamFilter}
-                    onChange={setTeamFilter}
-                    options={teamOptions}
-                  />
-                  <Select
-                    allowClear
-                    style={{ width: 260 }}
-                    placeholder="Filter Employee"
-                    value={employeeFilter}
-                    onChange={setEmployeeFilter}
-                    options={employeeOptions}
-                  />
+                  <Text type="secondary">Timeline is available in the detailed records below.</Text>
                 </Space>
                 <Table<AdminRow>
                   rowKey="id"
@@ -713,58 +736,30 @@ export default function Attendance() {
                     },
                   ]}
                 />
-              </Card>
-            ),
-          },
-          {
-            key: "flow-test",
-            label: "Attendance Scenario",
-            children: (
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card title="Night Shift Validation">
-                  <Space wrap>
-                    <Tag color="purple">Night Shift 20:00</Tag>
-                    <Tag>Check In</Tag>
-                    <Tag>Break Out</Tag>
-                    <Tag>Break In</Tag>
-                    <Tag>Check Out</Tag>
-                    <Tag color="blue">Report</Tag>
-                  </Space>
-
-                  <Space wrap style={{ marginTop: 12 }}>
-                    <Select
-                      style={{ width: 260 }}
-                      placeholder="Select Employee"
-                      value={scenarioEmployeeId}
-                      onChange={setScenarioEmployeeId}
-                      options={employeeOptions}
-                    />
-                    <DatePicker value={scenarioDate} onChange={(v) => setScenarioDate(v || dayjs())} />
-                  </Space>
                 </Card>
-
-                <Card title="Attendance Results (Hours / Late / Early Leave / Break)">
-                  {scenarioResult ? (
-                    <Space direction="vertical" size={8}>
-                      <Text>Employee: {scenarioResult.employeeName}</Text>
-                      <Text>Shift: {scenarioResult.shiftName} ({scenarioResult.shiftWindow})</Text>
-                      <Text>Check In: {toDateTime(scenarioResult.checkIn)}</Text>
-                      <Text>Check Out: {toDateTime(scenarioResult.checkOut)}</Text>
-                      <Text>Hours: {toHours(scenarioResult.totalHours)} hrs</Text>
-                      <Text>Break Duration: {scenarioResult.breakMinutes} min</Text>
-                      <Text>Late: {scenarioResult.lateMinutes} min {scenarioResult.isLate ? <Tag color="orange">LATE</Tag> : <Tag color="green">OK</Tag>}</Text>
-                      <Text>Early Leave: {scenarioResult.earlyLeaveMinutes} min {scenarioResult.isEarlyLeave ? <Tag color="red">EARLY_LEAVE</Tag> : <Tag color="green">OK</Tag>}</Text>
-                      <Text>Final Status: <Tag>{scenarioResult.status}</Tag></Text>
-                    </Space>
-                  ) : (
-                    <Empty description="No valid attendance data for selected employee/date" />
-                  )}
-                </Card>
-              </Space>
+              </>
             ),
           },
         ]}
       />
+
+      <Card title="Attendance Scenario" style={{ display: 'none' }}>
+        {scenarioResult ? (
+          <Space direction="vertical" size={8}>
+            <Text>Employee: {scenarioResult.employeeName}</Text>
+            <Text>Shift: {scenarioResult.shiftName} ({scenarioResult.shiftWindow})</Text>
+            <Text>Check In: {toDateTime(scenarioResult.checkIn)}</Text>
+            <Text>Check Out: {toDateTime(scenarioResult.checkOut)}</Text>
+            <Text>Hours: {toHours(scenarioResult.totalHours)} hrs</Text>
+            <Text>Break Duration: {scenarioResult.breakMinutes} min</Text>
+            <Text>Late: {scenarioResult.lateMinutes} min {scenarioResult.isLate ? <Tag color="orange">LATE</Tag> : <Tag color="green">OK</Tag>}</Text>
+            <Text>Early Leave: {scenarioResult.earlyLeaveMinutes} min {scenarioResult.isEarlyLeave ? <Tag color="red">EARLY_LEAVE</Tag> : <Tag color="green">OK</Tag>}</Text>
+            <Text>Final Status: <Tag>{scenarioResult.status}</Tag></Text>
+          </Space>
+        ) : (
+          <Empty description="No valid attendance data for selected employee/date" />
+        )}
+      </Card>
     </Space>
   );
 }
