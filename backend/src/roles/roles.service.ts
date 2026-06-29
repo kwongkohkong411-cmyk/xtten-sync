@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BaseRbacService } from '../auth/base-rbac.service';
 import { Actor, RbacCoreService } from '../auth/rbac-core.service';
@@ -70,11 +70,20 @@ export class RolesService extends BaseRbacService {
   async findAll(actor?: Actor) {
     const { roleName, companyId } = await this.resolveActorContext(actor);
 
+    const where =
+      roleName === 'SUPER_ADMIN'
+        ? undefined
+        : {
+            AND: [
+              { name: { not: 'SUPER_ADMIN' } },
+              {
+                OR: [{ companyId: null }, { companyId: companyId || '__never__' }],
+              },
+            ],
+          };
+
     return this.prisma.role.findMany({
-      where:
-        roleName === 'SUPER_ADMIN'
-          ? undefined
-          : { name: { not: 'SUPER_ADMIN' } },
+      where,
       include: {
         users:
           roleName === 'SUPER_ADMIN'
@@ -95,13 +104,19 @@ export class RolesService extends BaseRbacService {
   }
 
   async create(body: RoleCreateInput, actor?: Actor) {
-    await this.rbacCore.assertPlatformAdmin(actor);
+    const { roleName, companyId } = await this.resolveActorContext(actor);
+
+    if (roleName !== 'SUPER_ADMIN' && !companyId) {
+      throw new ForbiddenException('Company context required');
+    }
 
     return this.prisma.role.create({
       data: {
         name: body.name,
         description: body.description,
         isSystem: false,
+        isCustom: true,
+        companyId: companyId ?? null,
         permissions: body.permissionIds
           ? {
               create: body.permissionIds.map((permissionId: string) => ({
@@ -119,15 +134,23 @@ export class RolesService extends BaseRbacService {
   }
 
   async update(id: string, body: RoleUpdateInput, actor?: Actor) {
-    await this.rbacCore.assertPlatformAdmin(actor);
+    const { roleName, companyId } = await this.resolveActorContext(actor);
 
     const current = await this.prisma.role.findUnique({
       where: { id },
-      select: { name: true, isSystem: true },
+      select: { name: true, isSystem: true, companyId: true },
     });
 
     if (!current) {
       throw new BadRequestException('Role not found');
+    }
+
+    if (current.isSystem) {
+      throw new BadRequestException('System role cannot be edited');
+    }
+
+    if (roleName !== 'SUPER_ADMIN' && current.companyId !== companyId) {
+      throw new ForbiddenException('Cross-company role update is not allowed');
     }
 
     if (current.isSystem && body.name && body.name !== current.name) {
@@ -166,7 +189,7 @@ export class RolesService extends BaseRbacService {
   }
 
   async remove(id: string, actor?: Actor) {
-    await this.rbacCore.assertPlatformAdmin(actor);
+    const { roleName, companyId } = await this.resolveActorContext(actor);
 
     const role = await this.prisma.role.findUnique({
       where: { id },
@@ -178,6 +201,10 @@ export class RolesService extends BaseRbacService {
 
     if (role.isSystem) {
       throw new BadRequestException('System role cannot be deleted');
+    }
+
+    if (roleName !== 'SUPER_ADMIN' && role.companyId !== companyId) {
+      throw new ForbiddenException('Cross-company role deletion is not allowed');
     }
 
     return this.prisma.role.delete({

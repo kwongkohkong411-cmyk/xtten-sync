@@ -32,25 +32,25 @@ type RoleCreateBody = {
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
-  @RequirePermission('user:manage')
+  @RequirePermission('roles:manage')
   @Post('init')
   init(@Req() req: RequestWithUser) {
     return this.rolesService.init(req.user);
   }
 
-  @RequirePermission('user:manage')
+  @RequirePermission('roles:view')
   @Get()
   findAll(@Req() req: RequestWithUser) {
     return this.rolesService.findAll(req.user);
   }
 
-  @RequirePermission('user:manage')
+  @RequirePermission('roles:manage')
   @Post()
   create(@Body() body: RoleCreateBody, @Req() req: RequestWithUser) {
     return this.rolesService.create(body, req.user);
   }
 
-  @RequirePermission('user:manage')
+  @RequirePermission('roles:manage')
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -60,7 +60,7 @@ export class RolesController {
     return this.rolesService.update(id, body, req.user);
   }
 
-  @RequirePermission('user:manage')
+  @RequirePermission('roles:manage')
   @Delete(':id')
   remove(@Param('id') id: string, @Req() req: RequestWithUser) {
     return this.rolesService.remove(id, req.user);

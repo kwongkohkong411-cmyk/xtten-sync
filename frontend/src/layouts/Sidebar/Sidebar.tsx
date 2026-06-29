@@ -144,11 +144,11 @@ export default function Sidebar() {
       key: "roles_permissions",
       icon: <SafetyCertificateOutlined />,
       label: "Users / Roles 管理",
-      required: "user:manage",
+      required: "roles:view",
       children: [
-        { key: "/users", label: "Users", required: "user:manage" },
-        { key: "/roles", label: "Roles", required: "user:manage" },
-        { key: "/roles/assign", label: "Role Assignment", required: "user:manage" },
+        { key: "/users", label: "Users", required: "users:view" },
+        { key: "/roles", label: "Roles", required: "roles:view" },
+        { key: "/roles/assign", label: "Role Assignment", required: "roles:manage" },
       ],
     },
   ];

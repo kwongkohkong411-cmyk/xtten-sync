@@ -26,19 +26,19 @@ type PermissionBody = {
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
-  @RequirePermission('user:manage')
+  @RequirePermission('roles:view')
   @Get()
   findAll(@Req() req: RequestWithUser) {
     return this.permissionsService.findAll(req.user);
   }
 
-  @RequirePermission('user:manage')
+  @RequirePermission('permissions:manage')
   @Post()
   create(@Body() body: PermissionBody, @Req() req: RequestWithUser) {
     return this.permissionsService.create(body, req.user);
   }
 
-  @RequirePermission('user:manage')
+  @RequirePermission('permissions:manage')
   @Delete(':id')
   remove(@Param('id') id: string, @Req() req: RequestWithUser) {
     return this.permissionsService.remove(id, req.user);

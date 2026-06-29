@@ -180,7 +180,14 @@ export default function Router() {
             }
           />
           <Route path="/users" element={<Users />} />
-          <Route path="/roles" element={<Roles />} />
+          <Route
+            path="/roles"
+            element={
+              <PermissionRoute permission="roles:view">
+                <Roles />
+              </PermissionRoute>
+            }
+          />
           <Route
             path="/shift"
             element={
@@ -380,7 +387,7 @@ export default function Router() {
           <Route
             path="/roles/assign"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="roles:manage">
                 <Roles />
               </PermissionRoute>
             }
