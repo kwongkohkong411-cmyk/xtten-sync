@@ -120,7 +120,7 @@ const APP_SHELL_SECTIONS: AppSection[] = [
         element: <Attendance />,
       },
       {
-        path: "/attendance/report",
+        path: "/attendance/work-hours",
         label: "Work Hours Report",
         required: "attendance:view",
         element: <Attendance />,

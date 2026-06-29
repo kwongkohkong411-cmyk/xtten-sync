@@ -227,6 +227,14 @@ export default function Router() {
             }
           />
           <Route
+            path="/attendance/work-hours"
+            element={
+              <AccessRoute permission="attendance:view">
+                <Attendance />
+              </AccessRoute>
+            }
+          />
+          <Route
             path="/attendance/summary"
             element={
               <AccessRoute permission="attendance:view">

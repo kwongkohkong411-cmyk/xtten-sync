@@ -29,7 +29,7 @@ const { RangePicker } = DatePicker;
 const ATTENDANCE_TABS = [
   { key: "records", label: "Clock In / Out Records", path: "/attendance/records" },
   { key: "calendar", label: "Attendance Calendar", path: "/attendance/calendar" },
-  { key: "report", label: "Work Hours Report", path: "/attendance/report" },
+  { key: "report", label: "Work Hours Report", path: "/attendance/work-hours" },
   { key: "summary", label: "Attendance Summary", path: "/attendance/summary" },
 ] as const;
 
@@ -175,7 +175,7 @@ function getStatusLabel(status: string, anomalyList: string[]) {
 
 function getViewFromPath(pathname: string): AttendanceViewKey {
   if (pathname.startsWith("/attendance/calendar")) return "calendar";
-  if (pathname.startsWith("/attendance/report")) return "report";
+  if (pathname.startsWith("/attendance/report") || pathname.startsWith("/attendance/work-hours")) return "report";
   if (pathname.startsWith("/attendance/summary")) return "summary";
   return "records";
 }
