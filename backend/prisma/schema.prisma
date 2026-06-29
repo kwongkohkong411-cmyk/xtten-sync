@@ -14,10 +14,18 @@ model Company {
   country   String?
   timezone  String   @default("Asia/Shanghai")
   logo      String?
-  plan      String   @default("FREE")
+  plan      String   @default("TRIAL")
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Billing fields
+  subscription   Subscription? @relation("companySubscription")
+  subscriptionStatus String @default("TRIAL") // 冗余字段，快速查询
+  employeesLimit Int @default(5) // Trial=5
+  trialEndsAt DateTime?
+  billingEmail String?
+  autoRenewal Boolean @default(false)
 
   departments    Department[]
   employees      Employee[]
@@ -25,11 +33,17 @@ model Company {
   workGroups     WorkGroup[]
   shiftTemplates ShiftTemplate[]
   rosters        Roster[]
+  rosterDetails  RosterDetail[] @relation("companyRosterDetails")
   attendances    Attendance[]
   leaves         Leave[]
   holidays       Holiday[]
+  invoices       Invoice[] @relation("companyInvoices")
+  featureAccess  CompanyFeatureAccess?
+  roles          Role[]
   tenantConfig   TenantConfig?
   auditLogs      TenantAuditLog[]
+
+  @@index([subscriptionStatus])
 }
 
 model TenantConfig {
@@ -152,16 +166,22 @@ model Department {
 }
 
 model Role {
-  id          String  @id @default(uuid())
-  name        String  @unique
+  id          String   @id @default(uuid())
+  name        String
   description String?
-  isSystem    Boolean @default(false)
+  isSystem    Boolean  @default(false)
+  isCustom    Boolean  @default(false)
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   users       User[] @relation("UserRoleRelation")
   permissions RolePermission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([name, companyId])
+  @@index([companyId])
 }
 
 model Permission {
@@ -229,7 +249,8 @@ model ShiftTemplate {
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  rosters Roster[]
+  rosters       Roster[]
+  rosterDetails RosterDetail[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -247,12 +268,15 @@ model Roster {
 
   status String @default("ASSIGNED")
 
-  employee  Employee      @relation(fields: [employeeId], references: [id])
-  workGroup WorkGroup     @relation(fields: [workGroupId], references: [id], onDelete: Cascade)
-  shift     ShiftTemplate @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  company   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee       Employee       @relation(fields: [employeeId], references: [id])
+  workGroup      WorkGroup      @relation(fields: [workGroupId], references: [id], onDelete: Cascade)
+  shift          ShiftTemplate  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rosterDetails  RosterDetail[] @relation("rosterDetails")
 
   createdAt DateTime @default(now())
+
+  @@unique([employeeId, month]) // 防止同月重复排班
 }
 
 model Attendance {
@@ -478,4 +502,138 @@ model ActivityScreenshot {
   @@index([companyId, captureSource, capturedAt])
   @@index([employeeId, capturedAt])
   @@index([capturedAt])
+}
+
+// ========== Billing Models ==========
+
+model Plan {
+  id                       String   @id @default(uuid())
+  name                     String   @unique
+  displayName              String?
+  maxEmployees             Int?
+  maxTeams                 Int?
+  maxCompanies             Int?
+  screenshotRetentionDays  Int      @default(30)
+  features                 Json     @default("{}")
+  priceMonthly             Decimal? @db.Decimal(10, 2)
+  priceYearly              Decimal? @db.Decimal(10, 2)
+  trialDays                Int      @default(0)
+  isActive                 Boolean  @default(true)
+
+  subscriptionHistory SubscriptionHistory[] @relation("planHistory")
+  subscriptions Subscription[] @relation("subscriptionPlan")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subscription {
+  id                   String   @id @default(uuid())
+  companyId            String   @unique
+  company              Company  @relation("companySubscription", fields: [companyId], references: [id], onDelete: Cascade)
+  planId               String
+  plan                 Plan     @relation("subscriptionPlan", fields: [planId], references: [id])
+  status               String   @default("ACTIVE") // 'trial' | 'active' | 'expired' | 'suspended' | 'cancelled'
+  billingCycle         String? // 'monthly' | 'yearly'
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  trialStartedAt       DateTime?
+  trialEndsAt          DateTime?
+  seatCount            Int? // 购买的员工数
+  usedSeatCount        Int      @default(0) // 当前使用的员工数
+  autoRenewal          Boolean  @default(true)
+
+  invoices Invoice[] @relation("subscriptionInvoices")
+  history  SubscriptionHistory[] @relation("subscriptionHistory")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+model Invoice {
+  id                  String   @id @default(uuid())
+  companyId           String
+  company             Company  @relation("companyInvoices", fields: [companyId], references: [id], onDelete: Cascade)
+  subscriptionId      String?
+  subscription        Subscription? @relation("subscriptionInvoices", fields: [subscriptionId], references: [id], onDelete: SetNull)
+  amount              Decimal  @db.Decimal(10, 2)
+  currency            String   @default("USDT")
+  billingPeriodStart  DateTime?
+  billingPeriodEnd    DateTime?
+  status              String   @default("PENDING") // 'pending' | 'paid' | 'failed' | 'cancelled'
+  paymentMethod       String? // 'usdt_wallet'
+  walletAddress       String?
+  paidAt              DateTime?
+  paymentTxHash       String? // 区块链交易哈希
+  nextRenewalDate     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@index([billingPeriodStart, billingPeriodEnd])
+  @@index([status])
+}
+
+model SubscriptionHistory {
+  id           String   @id @default(uuid())
+  subscriptionId String
+  subscription Subscription @relation("subscriptionHistory", fields: [subscriptionId], references: [id], onDelete: Cascade)
+  fromPlanId   String?
+  fromPlan     Plan? @relation("planHistory", fields: [fromPlanId], references: [id], onDelete: SetNull)
+  eventType    String
+  reason       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([subscriptionId, createdAt])
+}
+
+model RosterDetail {
+  id               String   @id @default(uuid())
+  rosterId         String
+  roster           Roster   @relation("rosterDetails", fields: [rosterId], references: [id], onDelete: Cascade)
+  companyId        String
+  company          Company  @relation("companyRosterDetails", fields: [companyId], references: [id], onDelete: Cascade)
+  date             DateTime @db.Date // YYYY-MM-DD
+  shiftTemplateId  String?
+  shiftTemplate    ShiftTemplate? @relation(fields: [shiftTemplateId], references: [id], onDelete: SetNull)
+  status           String   @default("ASSIGNED") // null shift_template_id 表示该天休假
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([rosterId, date])
+  @@index([companyId, date])
+  @@index([date, shiftTemplateId])
+}
+
+model CompanyFeatureAccess {
+  id                        String   @id @default(uuid())
+  companyId                 String   @unique
+  company                   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subscriptionId            String?
+  hasExport                 Boolean  @default(false)
+  hasApi                    Boolean  @default(false)
+  hasSso                    Boolean  @default(false)
+  hasAuditLog               Boolean  @default(false)
+  hasAdvancedReport         Boolean  @default(false)
+  hasWebhook                Boolean  @default(false)
+  hasDeviceManagement       Boolean  @default(false)
+  hasAutoUpdatePolicy       Boolean  @default(false)
+  hasMultiTenant            Boolean  @default(false)
+  hasLdapAd                 Boolean  @default(false)
+  hasIpWhitelist            Boolean  @default(false)
+  hasMfa                    Boolean  @default(false)
+  hasCustomBranding         Boolean  @default(false)
+  hasCustomDomain           Boolean  @default(false)
+  screenshotRetentionDays   Int      @default(30)
+  expirationStatus          String   @default("ACTIVE") // 'active' | 'warning_3day' | 'warning_1day' | 'warning_today' | 'expired' | 'suspended'
+  remindedAt                DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
