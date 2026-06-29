@@ -114,7 +114,7 @@ export default function AgentDownloads() {
               </Space>
               <Divider style={{ margin: '10px 0' }} />
               <Paragraph style={{ marginBottom: 6 }}>
-                Install steps (Windows MVP)
+                Install steps (Windows)
               </Paragraph>
               <Text>1. Download EXE or MSI package.</Text>
               <Text>2. Install and open XTTEN Agent.</Text>
@@ -134,7 +134,7 @@ export default function AgentDownloads() {
               <Alert
                 type='info'
                 showIcon
-                message='macOS is scheduled after Windows MVP.'
+                message='macOS release is scheduled after Windows.'
                 description='Planned follow-up includes Screen Recording and Accessibility permission onboarding.'
               />
             </Space>

@@ -291,7 +291,7 @@ export default function Reports() {
   return (
     <Space direction='vertical' size={16} style={{ width: '100%' }}>
       <Card>
-        <Title level={3} style={{ marginBottom: 8 }}>Reports V1</Title>
+        <Title level={3} style={{ marginBottom: 8 }}>Reports</Title>
         <Text type='secondary'>
           Daily Report, Monthly Report, and All Attendance Summary consolidated with Attendance + Leave.
         </Text>

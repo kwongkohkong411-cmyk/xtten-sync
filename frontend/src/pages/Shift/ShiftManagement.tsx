@@ -6,16 +6,16 @@ import Rosters from "../Rosters";
 const { Title, Text } = Typography;
 
 const referenceColumns = [
-  { title: "班次名称", dataIndex: "name" },
-  { title: "开始时间", dataIndex: "start" },
-  { title: "结束时间", dataIndex: "end" },
+  { title: "Shift Name", dataIndex: "name" },
+  { title: "Start Time", dataIndex: "start" },
+  { title: "End Time", dataIndex: "end" },
   {
-    title: "是否跨日",
+    title: "Cross Day",
     dataIndex: "crossDay",
-    render: (v: boolean) => (v ? <Tag color="purple">是</Tag> : <Tag>否</Tag>),
+    render: (v: boolean) => (v ? <Tag color="purple">Yes</Tag> : <Tag>No</Tag>),
   },
-  { title: "休息时间", dataIndex: "break" },
-  { title: "适用团队", dataIndex: "team" },
+  { title: "Break", dataIndex: "break" },
+  { title: "Applicable Team", dataIndex: "team" },
 ];
 
 const referenceData = [
@@ -27,17 +27,17 @@ export default function ShiftManagement() {
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Card>
-        <Title level={3} style={{ marginBottom: 8 }}>Shift 班次管理</Title>
-        <Text type="secondary">统一管理班次模板、适用团队和排班。支持跨日班次（例如 20:00 - 次日 08:00）。</Text>
+        <Title level={3} style={{ marginBottom: 8 }}>Shift Management</Title>
+        <Text type="secondary">Manage shift templates, applicable teams, and rosters in one place. Supports cross-day shifts (for example, 20:00 - next day 08:00).</Text>
       </Card>
 
-      <Card title="班次结构参考（MVP）">
+      <Card title="Shift Structure Reference">
         <Table rowKey="key" columns={referenceColumns} dataSource={referenceData} pagination={false} />
       </Card>
 
-      <Card title="端到端流程">
+      <Card title="End-to-End Flow">
         <Text>
-          {"班次设置 (Shift Templates / Work Groups / Rosters) -> 员工打卡 (Attendance) -> 跨日工时计算 (后端事件聚合) -> 报表展示与导出 (Reports)"}
+          {"Shift setup (Shift Templates / Teams / Rosters) -> Attendance -> Cross-day working hours calculation (backend event aggregation) -> Reporting and export (Reports)"}
         </Text>
       </Card>
 

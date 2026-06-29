@@ -68,7 +68,7 @@ export default function Sidebar() {
     {
       key: "admin",
       icon: <CrownOutlined />,
-      label: "Super Admin",
+      label: "System",
       required: "system:admin",
       children: [
         { key: "/admin/system", label: "System Configuration", required: "system:admin" },
@@ -94,7 +94,7 @@ export default function Sidebar() {
       children: [
         { key: "/shift", label: "Shift Overview", required: "shift:view" },
         { key: "/shift-templates", label: "Shift Templates", required: "shift:view" },
-        { key: "/work-groups", label: "Work Groups", required: "shift:view" },
+        { key: "/work-groups", label: "Teams", required: "shift:view" },
         { key: "/rosters", label: "Rosters", required: "shift:view" },
       ],
     },

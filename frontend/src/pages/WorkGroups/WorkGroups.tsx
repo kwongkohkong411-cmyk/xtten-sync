@@ -57,7 +57,7 @@ export default function WorkGroups() {
       setWorkGroups(wgRes.data);
       setCompanies(companyRes.data);
     } catch (error) {
-      message.error("Failed to load work groups");
+      message.error("Failed to load teams");
     } finally {
       setLoading(false);
     }
@@ -220,7 +220,7 @@ export default function WorkGroups() {
 
   return (
     <Card
-      title="Work Groups"
+      title="Teams"
       extra={
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           New Group
@@ -243,7 +243,7 @@ export default function WorkGroups() {
       />
 
       <Modal
-        title={editing ? "Edit Work Group" : "New Work Group"}
+        title={editing ? "Edit Team" : "New Team"}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
