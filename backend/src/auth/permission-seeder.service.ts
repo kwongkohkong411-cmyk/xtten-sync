@@ -112,6 +112,7 @@ export class PermissionSeederService {
       'teams:delete': '删除团队',
       'screenshot:view': '查看截图',
       'screenshot:export': '导出截图',
+      'attendance:manage': '考勤打卡/管理',
       'attendance:view': '查看考勤',
       'attendance:edit': '编辑考勤',
       'attendance:view_calendar': '查看考勤日历',

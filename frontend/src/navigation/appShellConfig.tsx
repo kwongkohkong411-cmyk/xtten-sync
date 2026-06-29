@@ -106,23 +106,28 @@ const APP_SHELL_SECTIONS: AppSection[] = [
     key: "attendance",
     label: "ATTENDANCE",
     icon: <ClockCircleOutlined />,
-    required: "attendance:view",
     children: [
       {
-        path: "/attendance/clock",
-        label: "Clock In / Out",
+        path: "/attendance/records",
+        label: "Clock In / Out Records",
         required: "attendance:view",
         element: <Attendance />,
       },
       {
         path: "/attendance/calendar",
         label: "Attendance Calendar",
-        required: "attendance:view",
+        required: "attendance:view_calendar",
         element: <Attendance />,
       },
       {
         path: "/attendance/report",
         label: "Work Hours Report",
+        required: "attendance:view",
+        element: <Attendance />,
+      },
+      {
+        path: "/attendance/summary",
+        label: "Attendance Summary",
         required: "attendance:view",
         element: <Attendance />,
       },

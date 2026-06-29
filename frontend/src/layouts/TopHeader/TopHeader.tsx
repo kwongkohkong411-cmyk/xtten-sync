@@ -26,9 +26,9 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
     title: "Departments",
     subtitle: "Manage departments",
   },
-  "/attendance/clock": {
+  "/attendance/records": {
     title: "Attendance",
-    subtitle: "Clock In / Out",
+    subtitle: "Clock In / Out Records",
   },
   "/attendance/calendar": {
     title: "Attendance",
@@ -38,9 +38,13 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
     title: "Attendance",
     subtitle: "Work Hours Report",
   },
+  "/attendance/summary": {
+    title: "Attendance",
+    subtitle: "Attendance Summary",
+  },
   "/attendance": {
     title: "Attendance",
-    subtitle: "Clock In and Attendance",
+    subtitle: "Clock In / Out Records",
   },
   "/shift/templates": {
     title: "Shift",

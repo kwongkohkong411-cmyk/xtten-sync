@@ -1,19 +1,43 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Button, Card, DatePicker, Empty, Select, Space, Table, Tabs, Tag, Typography, message } from "antd";
-import { CoffeeOutlined, LoginOutlined, LogoutOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import {
+  Badge,
+  Button,
+  Calendar,
+  Card,
+  DatePicker,
+  Empty,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tabs,
+  Tag,
+  Typography,
+  message,
+} from "antd";
+import type { CalendarProps } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
 import { useLocation, useNavigate } from "react-router-dom";
-import { breakIn, breakOut, checkIn, checkOut, getAttendanceEvents } from "../../api/attendance";
+
+import { getAttendanceEvents } from "../../api/attendance";
 import { getRosters } from "../../api/rosters";
-import { getStatusColor } from "../../utils/statusColors";
+import { getCurrentUser } from "../../utils/auth";
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
 
+const ATTENDANCE_TABS = [
+  { key: "records", label: "Clock In / Out Records", path: "/attendance/records" },
+  { key: "calendar", label: "Attendance Calendar", path: "/attendance/calendar" },
+  { key: "report", label: "Work Hours Report", path: "/attendance/report" },
+  { key: "summary", label: "Attendance Summary", path: "/attendance/summary" },
+] as const;
+
+type AttendanceViewKey = (typeof ATTENDANCE_TABS)[number]["key"];
+
 type AttendanceEvent = {
   id: string;
   employeeId: string;
-  shiftDate?: string;
   date?: string;
   workDate?: string;
   status?: string;
@@ -31,44 +55,52 @@ type AttendanceEvent = {
   anomaly?: string;
   anomalyList?: string[];
   timeline?: Array<{ type: string; at: string }>;
-  employee?: { id: string; name?: string };
-  shift?: { id: string; name?: string };
+  employee?: { id: string; name?: string; employeeNo?: string; department?: { name?: string } | null };
+  shift?: { id: string; name?: string; startTime?: string | null; endTime?: string | null; crossDay?: boolean };
 };
 
 type RosterRecord = {
   employeeId?: string;
   month?: string;
-  shift?: {
-    name?: string;
-    startTime?: string;
-    endTime?: string;
-    crossDay?: boolean;
-    lateAfter?: number;
-    earlyLeave?: number;
-  };
+  shift?: { name?: string; startTime?: string; endTime?: string; crossDay?: boolean; breakMinutes?: number };
   workGroup?: { name?: string };
 };
 
-type AdminRow = {
+type AttendanceRow = {
   id: string;
   employeeId: string;
-  shiftDate: string;
-  employee: string;
+  employeeName: string;
+  employeeNo: string;
   team: string;
   shift: string;
+  shiftDate: string;
+  checkIn: string | null;
+  checkOut: string | null;
   scheduledStartTime: string;
   scheduledEndTime: string;
-  checkIn?: string | null;
-  checkOut?: string | null;
+  breakMinutes: number;
+  workHours: number;
+  otHours: number;
   lateMinutes: number;
   lateHours: number;
   earlyLeaveMinutes: number;
   earlyLeaveHours: number;
-  worked: number;
   status: string;
   anomalyList: string[];
   anomaly: string;
-  ruleSource: string;
+};
+
+type SummaryRow = {
+  employeeId: string;
+  employeeName: string;
+  employeeNo: string;
+  team: string;
+  present: number;
+  late: number;
+  leave: number;
+  absent: number;
+  otHours: number;
+  workHours: number;
 };
 
 type ApiError = {
@@ -76,199 +108,191 @@ type ApiError = {
   message?: string;
 };
 
-function toDateTime(v?: string | null) {
-  return v ? dayjs(v).format("YYYY-MM-DD HH:mm:ss") : "-";
-}
-
-function toHours(v?: number | null) {
-  const n = Number(v ?? 0);
-  return n > 0 ? n.toFixed(2) : "0.00";
-}
-
-function toTime(v?: string | null) {
-  return v ? dayjs(v).format("HH:mm") : "-";
-}
-
-function toHourMinute(v?: number | null) {
-  const totalMinutes = Math.round(Number(v ?? 0) * 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return `${hours}h ${minutes}m`;
-}
-
-function deriveShiftDate(event: AttendanceEvent) {
-  const explicitDate = event.shiftDate || event.workDate || event.date;
-  if (explicitDate) {
-    const parsed = dayjs(explicitDate);
-    if (parsed.isValid()) return parsed.format("YYYY-MM-DD");
-  }
-
-  const scheduledStart = event.scheduledStartTime;
-  if (scheduledStart && (scheduledStart.includes("-") || scheduledStart.includes("T") || scheduledStart.includes("/"))) {
-    const parsed = dayjs(scheduledStart);
-    if (parsed.isValid()) return parsed.format("YYYY-MM-DD");
-  }
-
-  return "-";
-}
-
-function getCompanyTimezoneFromStorage() {
-  const directTimezone = localStorage.getItem("company_timezone") || localStorage.getItem("timezone");
-  if (directTimezone) return directTimezone;
-
-  const userRaw = localStorage.getItem("xtten_user");
-  if (!userRaw) return undefined;
-
-  try {
-    const user = JSON.parse(userRaw) as {
-      timezone?: string;
-      companyTimezone?: string;
-      company?: { timezone?: string };
-    };
-    return user.company?.timezone || user.companyTimezone || user.timezone;
-  } catch {
-    return undefined;
-  }
-}
-
-function getTodayByTimezone(timezone?: string) {
-  if (!timezone) return dayjs();
-
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(new Date());
-
-    const year = parts.find((p) => p.type === "year")?.value;
-    const month = parts.find((p) => p.type === "month")?.value;
-    const day = parts.find((p) => p.type === "day")?.value;
-
-    if (year && month && day) {
-      return dayjs(`${year}-${month}-${day}`);
-    }
-  } catch {
-    // Fallback to browser local date when timezone is missing/invalid.
-  }
-
-  return dayjs();
-}
-
-function renderStatusBadge(status: string, anomalyList: string[]) {
-  const source = `${status} ${anomalyList.join(" ")}`.toUpperCase();
-
-  if (source.includes("HOLIDAY")) {
-    return <Badge color={getStatusColor("HOLIDAY")} text="Holiday" />;
-  }
-  if (source.includes("ABSENT")) {
-    return <Badge color="red" text="Absent" />;
-  }
-  if (source.includes("EARLY_LEAVE")) {
-    return <Badge color="yellow" text="Early Leave" />;
-  }
-  if (source.includes("LEAVE")) {
-    return <Badge color="blue" text="Leave" />;
-  }
-  if (source.includes("LATE")) {
-    return <Badge color="orange" text="Late" />;
-  }
-  if (source.includes("PRESENT")) {
-    return <Badge color="green" text="Present" />;
-  }
-
-  return <Badge color="default" text={status || "-"} />;
-}
-
-function getStatusLabel(status: string, anomalyList: string[]) {
-  const source = `${status} ${anomalyList.join(" ")}`.toUpperCase();
-
-  if (source.includes("HOLIDAY")) return "Holiday";
-  if (source.includes("ABSENT")) return "Absent";
-  if (source.includes("EARLY_LEAVE")) return "Early Leave";
-  if (source.includes("LEAVE")) return "Leave";
-  if (source.includes("LATE")) return "Late";
-  if (source.includes("PRESENT")) return "Present";
-  return status || "-";
-}
-
-function toCsvCell(value: string) {
-  const escaped = value.replace(/"/g, '""');
-  return `"${escaped}"`;
-}
-
-function sanitizeFilePart(value: string) {
-  return value
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9_-]/g, "");
-}
-
 function getErrorMessage(error: unknown, fallback: string) {
   if (typeof error === "object" && error) {
     const typedError = error as ApiError;
     return typedError.response?.data?.message || typedError.message || fallback;
   }
-
   return fallback;
+}
+
+function toDateTime(value?: string | null) {
+  return value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "-";
+}
+
+function toTime(value?: string | null) {
+  return value ? dayjs(value).format("HH:mm") : "-";
+}
+
+function toHours(value?: number | null) {
+  return Number(value ?? 0).toFixed(2);
+}
+
+function formatDurationHours(value?: number | null) {
+  return `${toHours(value)} hr`;
+}
+
+function formatMinutesHours(value?: number | null) {
+  const minutes = Math.max(0, Math.round(Number(value ?? 0)));
+  return `${minutes} min / ${(minutes / 60).toFixed(2)} hr`;
+}
+
+function toCsvCell(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function sanitizeFilePart(value: string) {
+  return value.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+function getDayKey(value?: string) {
+  if (!value) return "-";
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.format("YYYY-MM-DD") : "-";
+}
+
+function getStatusColor(status: string, anomalyList: string[]) {
+  const upper = `${status} ${anomalyList.join(" ")}`.toUpperCase();
+  if (upper.includes("ABSENT")) return "red";
+  if (upper.includes("EARLY_LEAVE")) return "volcano";
+  if (upper.includes("LEAVE")) return "blue";
+  if (upper.includes("LATE")) return "orange";
+  if (upper.includes("PRESENT")) return "green";
+  if (upper.includes("HOLIDAY")) return "gold";
+  return "default";
+}
+
+function getStatusLabel(status: string, anomalyList: string[]) {
+  const upper = `${status} ${anomalyList.join(" ")}`.toUpperCase();
+  if (upper.includes("ABSENT")) return "Absent";
+  if (upper.includes("EARLY_LEAVE")) return "Early Leave";
+  if (upper.includes("LEAVE")) return "Leave";
+  if (upper.includes("LATE")) return "Late";
+  if (upper.includes("PRESENT")) return "Present";
+  if (upper.includes("HOLIDAY")) return "Holiday";
+  return status || "-";
+}
+
+function getViewFromPath(pathname: string): AttendanceViewKey {
+  if (pathname.startsWith("/attendance/calendar")) return "calendar";
+  if (pathname.startsWith("/attendance/report")) return "report";
+  if (pathname.startsWith("/attendance/summary")) return "summary";
+  return "records";
+}
+
+function isEmployeeSelfView(userRole?: string | null, employeeId?: string | null) {
+  return (userRole || "").toUpperCase() === "EMPLOYEE" && Boolean(employeeId);
+}
+
+function deriveWorkDate(event: AttendanceEvent) {
+  return getDayKey(event.workDate || event.date || event.checkIn || event.checkOut);
+}
+
+function timelineBreakMinutes(timeline?: Array<{ type: string; at: string }>) {
+  if (!Array.isArray(timeline) || timeline.length === 0) return 0;
+
+  let breakStartedAt: Dayjs | null = null;
+  let minutes = 0;
+
+  for (const item of timeline) {
+    if (item.type === "BREAK_OUT") {
+      breakStartedAt = dayjs(item.at);
+      continue;
+    }
+
+    if (item.type === "BREAK_IN" && breakStartedAt) {
+      minutes += Math.max(dayjs(item.at).diff(breakStartedAt, "minute"), 0);
+      breakStartedAt = null;
+    }
+  }
+
+  return minutes;
+}
+
+function computeScheduledMinutes(startTime?: string | null, endTime?: string | null, crossDay?: boolean) {
+  if (!startTime || !endTime || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
+    return 0;
+  }
+
+  const [startHour, startMinute] = startTime.split(":").map(Number);
+  const [endHour, endMinute] = endTime.split(":").map(Number);
+  const start = dayjs().hour(startHour).minute(startMinute).second(0).millisecond(0);
+  let end = dayjs().hour(endHour).minute(endMinute).second(0).millisecond(0);
+  if (crossDay || end.isBefore(start) || end.isSame(start)) {
+    end = end.add(1, "day");
+  }
+  return Math.max(end.diff(start, "minute"), 0);
+}
+
+function exportCsv(filename: string, headers: string[], lines: string[][]) {
+  const csvContent = [headers, ...lines].map((line) => line.map((cell) => toCsvCell(cell)).join(",")).join("\n");
+  const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }
 
 export default function Attendance() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const attendanceRouteView = useMemo(() => {
-    if (location.pathname.startsWith("/attendance/report")) return "report";
-    if (location.pathname.startsWith("/attendance/calendar")) return "calendar";
-    return "clock";
-  }, [location.pathname]);
+  const currentUser = getCurrentUser();
+  const currentEmployeeId = localStorage.getItem("employee_id") || currentUser?.employeeId || "";
+  const currentCompanyId = localStorage.getItem("company_id") || currentUser?.companyId || undefined;
+  const selfOnly = isEmployeeSelfView(currentUser?.role, currentEmployeeId);
 
-  const activeTopTab = attendanceRouteView === "clock" ? "self" : "admin";
+  const activeView = useMemo(() => getViewFromPath(location.pathname), [location.pathname]);
 
-  const adminViewTitle = attendanceRouteView === "report" ? "Work Hours Report" : "Attendance Calendar";
-  const adminViewHint = attendanceRouteView === "report"
-    ? "Worked hours and anomalies are shown in the records below."
-    : "Attendance records by date/team are shown below.";
-
-  const handleTopTabChange = (key: string) => {
-    if (key === "self") {
-      navigate("/attendance/clock");
-      return;
-    }
-
-    if (attendanceRouteView === "report") {
-      navigate("/attendance/report");
-      return;
-    }
-
-    navigate("/attendance/calendar");
-  };
-
-  const resolveShiftDateToday = useCallback(() => getTodayByTimezone(getCompanyTimezoneFromStorage()), []);
-  const currentEmployeeId = localStorage.getItem("employee_id") || "";
-  const currentCompanyId = localStorage.getItem("company_id") || undefined;
   const [loading, setLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
   const [rosters, setRosters] = useState<RosterRecord[]>([]);
-  const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(() => [dayjs().startOf("month"), dayjs().endOf("day")]);
   const [employeeFilter, setEmployeeFilter] = useState<string | undefined>(undefined);
   const [teamFilter, setTeamFilter] = useState<string | undefined>(undefined);
-  const [shiftDateFilter, setShiftDateFilter] = useState<dayjs.Dayjs | undefined>(() =>
-    resolveShiftDateToday(),
-  );
-  const [scenarioEmployeeId, setScenarioEmployeeId] = useState<string | undefined>(() => currentEmployeeId || undefined);
-  const [scenarioDate, setScenarioDate] = useState(dayjs());
+  const [searchText, setSearchText] = useState("");
+  const [recordsRange, setRecordsRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf("month"), dayjs().endOf("day")]);
+  const [reportRange, setReportRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf("month"), dayjs().endOf("day")]);
+  const [summaryRange, setSummaryRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf("month"), dayjs().endOf("day")]);
+  const [calendarMonth, setCalendarMonth] = useState<Dayjs>(dayjs().startOf("month"));
 
-  const fetchEvents = useCallback(async () => {
+  useEffect(() => {
+    if (selfOnly && currentEmployeeId) {
+      setEmployeeFilter(currentEmployeeId);
+    }
+  }, [currentEmployeeId, selfOnly]);
+
+  const viewRange = useMemo(() => {
+    if (activeView === "calendar") return [calendarMonth.startOf("month"), calendarMonth.endOf("month")] as [Dayjs, Dayjs];
+    if (activeView === "report") return reportRange;
+    if (activeView === "summary") return summaryRange;
+    return recordsRange;
+  }, [activeView, calendarMonth, recordsRange, reportRange, summaryRange]);
+
+  const effectiveEmployeeId = selfOnly ? currentEmployeeId || undefined : employeeFilter;
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const attendanceRes = await getAttendanceEvents({
-        startDate: range[0].startOf("day").toISOString(),
-        endDate: range[1].endOf("day").toISOString(),
-      });
+      const [attendanceRes, rosterRes] = await Promise.all([
+        getAttendanceEvents({
+          startDate: viewRange[0].startOf("day").toISOString(),
+          endDate: viewRange[1].endOf("day").toISOString(),
+          employeeId: effectiveEmployeeId,
+        }),
+        getRosters({
+          companyId: currentCompanyId,
+          startDate: viewRange[0].startOf("day").toISOString(),
+          endDate: viewRange[1].endOf("day").toISOString(),
+          employeeId: effectiveEmployeeId,
+        }),
+      ]);
+
       setEvents(Array.isArray(attendanceRes.data?.events) ? attendanceRes.data.events : []);
+      setRosters(Array.isArray(rosterRes.data) ? rosterRes.data : []);
     } catch (error: unknown) {
       message.error(getErrorMessage(error, "Failed to load attendance"));
       setEvents([]);
@@ -276,524 +300,420 @@ export default function Attendance() {
     } finally {
       setLoading(false);
     }
-  }, [range]);
-
-  const fetchRosters = useCallback(() => {
-    return getRosters({
-      companyId: currentCompanyId,
-      startDate: range[0].startOf("day").toISOString(),
-      endDate: range[1].endOf("day").toISOString(),
-    })
-        .then((rosterRes) => {
-          setRosters(Array.isArray(rosterRes.data) ? rosterRes.data : []);
-        })
-        .catch(() => {
-          setRosters([]);
-        });
-  }, [currentCompanyId, range]);
-
-  const rangeStart = range[0].valueOf();
-  const rangeEnd = range[1].valueOf();
+  }, [currentCompanyId, effectiveEmployeeId, viewRange]);
 
   useEffect(() => {
-    const timerId = window.setTimeout(() => {
-      void fetchEvents();
-      void fetchRosters();
-    }, 0);
+    void fetchData();
+  }, [fetchData]);
 
-    return () => {
-      window.clearTimeout(timerId);
-    };
-  }, [fetchEvents, fetchRosters, rangeEnd, rangeStart]);
-
-  const selfEvents = useMemo(() => events.filter((e) => e.employeeId === currentEmployeeId), [events, currentEmployeeId]);
-
-  const todaySelfRecord = useMemo(() => {
-    const today = dayjs().format("YYYY-MM-DD");
-    return selfEvents
-      .filter((e) => {
-        const key = dayjs(e.workDate || e.checkIn || e.checkOut).format("YYYY-MM-DD");
-        return key === today;
-      })
-      .sort((a, b) => dayjs(b.checkIn || 0).valueOf() - dayjs(a.checkIn || 0).valueOf())[0];
-  }, [selfEvents]);
-
-  const attendanceState = useMemo(() => {
-    if (todaySelfRecord?.status === "LEAVE") return "ON_LEAVE";
-    if (!todaySelfRecord?.checkIn) return "NOT_CHECKED_IN";
-    if (todaySelfRecord?.checkOut) return "CHECKED_OUT";
-    return todaySelfRecord?.status === "ON_BREAK" ? "ON_BREAK" : "WORKING";
-  }, [todaySelfRecord]);
-
-  const handleAction = async (kind: "checkIn" | "breakOut" | "breakIn" | "checkOut") => {
-    setActionLoading(true);
-    try {
-      if (kind === "checkIn") await checkIn();
-      if (kind === "breakOut") await breakOut();
-      if (kind === "breakIn") await breakIn();
-      if (kind === "checkOut") {
-        if (!todaySelfRecord?.id) {
-          message.warning("No active attendance record");
-          setActionLoading(false);
-          return;
-        }
-        await checkOut(todaySelfRecord.id);
-      }
-      message.success("Action success");
-      await fetchEvents();
-    } catch (error: unknown) {
-      message.error(getErrorMessage(error, "Action failed"));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const allAdminRows = useMemo<AdminRow[]>(() => {
-    const rosterMap = new Map<string, { shift: string; team: string }>();
+  const rosterLookup = useMemo(() => {
+    const map = new Map<string, RosterRecord>();
     for (const roster of rosters) {
-      const month = String(roster?.month || "");
-      if (!month || !roster?.employeeId) continue;
-      rosterMap.set(`${roster.employeeId}:${month}`, {
-        shift: roster?.shift?.name || "-",
-        team: roster?.workGroup?.name || "-",
-      });
+      if (!roster.employeeId || !roster.month) continue;
+      map.set(`${roster.employeeId}:${roster.month}`, roster);
+    }
+    return map;
+  }, [rosters]);
+
+  const rows = useMemo<AttendanceRow[]>(() => {
+    return events
+      .map((event) => {
+        const shiftDate = deriveWorkDate(event);
+        const monthKey = shiftDate !== "-" ? dayjs(shiftDate).format("YYYY-MM") : viewRange[0].format("YYYY-MM");
+        const roster = rosterLookup.get(`${event.employeeId}:${monthKey}`);
+        const workHours = Number(event.totalHoursDecimal ?? event.totalHours ?? 0);
+        const breakMinutes = timelineBreakMinutes(event.timeline);
+        const scheduledMinutes = computeScheduledMinutes(
+          roster?.shift?.startTime || event.scheduledStartTime,
+          roster?.shift?.endTime || event.scheduledEndTime,
+          roster?.shift?.crossDay || event.shift?.crossDay,
+        );
+        const otHours = Math.max(workHours - scheduledMinutes / 60, 0);
+        const lateMinutes = Number(event.lateMinutes ?? 0);
+        const earlyLeaveMinutes = Number(event.earlyLeaveMinutes ?? 0);
+        const anomalyList = Array.isArray(event.anomalyList) ? event.anomalyList : [];
+
+        return {
+          id: event.id,
+          employeeId: event.employeeId,
+          employeeName: event.employee?.name || event.employee?.employeeNo || event.employeeId,
+          employeeNo: event.employee?.employeeNo || "-",
+          team: roster?.workGroup?.name || event.employee?.department?.name || "-",
+          shift: roster?.shift?.name || event.shift?.name || "-",
+          shiftDate,
+          checkIn: event.checkIn || null,
+          checkOut: event.checkOut || null,
+          scheduledStartTime: roster?.shift?.startTime || event.scheduledStartTime || "-",
+          scheduledEndTime: roster?.shift?.endTime || event.scheduledEndTime || "-",
+          breakMinutes,
+          workHours,
+          otHours,
+          lateMinutes,
+          lateHours: Number(event.lateHours ?? lateMinutes / 60),
+          earlyLeaveMinutes,
+          earlyLeaveHours: Number(event.earlyLeaveHours ?? earlyLeaveMinutes / 60),
+          status: event.status || "-",
+          anomalyList,
+          anomaly: anomalyList.length ? anomalyList.join(", ") : event.anomaly || "-",
+        };
+      })
+      .sort((left, right) => dayjs(right.shiftDate).valueOf() - dayjs(left.shiftDate).valueOf());
+  }, [events, rosterLookup, viewRange]);
+
+  const visibleRows = useMemo(() => {
+    const keyword = searchText.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (teamFilter && row.team !== teamFilter) return false;
+      if (effectiveEmployeeId && row.employeeId !== effectiveEmployeeId) return false;
+      if (keyword && ![row.shiftDate, row.employeeName, row.employeeNo, row.team, row.shift, row.status, row.anomaly].some((value) => String(value || "").toLowerCase().includes(keyword))) {
+        return false;
+      }
+      return true;
+    });
+  }, [effectiveEmployeeId, rows, searchText, teamFilter]);
+
+  const summaryRows = useMemo<SummaryRow[]>(() => {
+    const map = new Map<string, SummaryRow>();
+    for (const row of visibleRows) {
+      const current = map.get(row.employeeId) || {
+        employeeId: row.employeeId,
+        employeeName: row.employeeName,
+        employeeNo: row.employeeNo,
+        team: row.team,
+        present: 0,
+        late: 0,
+        leave: 0,
+        absent: 0,
+        otHours: 0,
+        workHours: 0,
+      };
+
+      const status = row.status.toUpperCase();
+      if (status === "PRESENT") current.present += 1;
+      if (row.lateMinutes > 0 || row.anomalyList.includes("LATE")) current.late += 1;
+      if (status === "LEAVE" || row.anomalyList.includes("LEAVE")) current.leave += 1;
+      if (status === "ABSENT" || status === "MISSING" || row.anomalyList.some((item) => item.includes("MISSING"))) current.absent += 1;
+      current.workHours = Number((current.workHours + row.workHours).toFixed(2));
+      current.otHours = Number((current.otHours + row.otHours).toFixed(2));
+      map.set(row.employeeId, current);
     }
 
-    return events.map((e) => {
-      const worked = Number(e.totalHoursDecimal ?? e.totalHours ?? 0);
-      const workMonth = dayjs(e.workDate || e.checkIn || e.checkOut || new Date()).format("YYYY-MM");
-      const rosterInfo = rosterMap.get(`${e.employeeId}:${workMonth}`);
-      const lateMinutes = Number(e.lateMinutes ?? 0);
-      const earlyLeaveMinutes = Number(e.earlyLeaveMinutes ?? 0);
-
-      return {
-        id: e.id,
-        employeeId: e.employeeId,
-        shiftDate: deriveShiftDate(e),
-        employee: e.employee?.name || e.employeeId,
-        team: rosterInfo?.team || "-",
-        shift: rosterInfo?.shift || e.shift?.name || "-",
-        scheduledStartTime: e.scheduledStartTime || "-",
-        scheduledEndTime: e.scheduledEndTime || "-",
-        checkIn: e.checkIn,
-        checkOut: e.checkOut,
-        lateMinutes,
-        lateHours: Number(e.lateHours ?? lateMinutes / 60),
-        earlyLeaveMinutes,
-        earlyLeaveHours: Number(e.earlyLeaveHours ?? earlyLeaveMinutes / 60),
-        worked,
-        status: e.status || "-",
-        anomalyList: Array.isArray(e.anomalyList) ? e.anomalyList : [],
-        anomaly: Array.isArray(e.anomalyList) && e.anomalyList.length ? e.anomalyList.join(", ") : e.anomaly || "-",
-        ruleSource: e.ruleSource || "-",
-      };
-    });
-  }, [events, rosters]);
-
-  const adminRows = useMemo<AdminRow[]>(() => {
-    const filteredByEmployee = employeeFilter
-      ? allAdminRows.filter((row) => row.employeeId === employeeFilter)
-      : allAdminRows;
-
-    const filteredByTeam = teamFilter
-      ? filteredByEmployee.filter((row) => row.team === teamFilter)
-      : filteredByEmployee;
-
-    if (!shiftDateFilter) return filteredByTeam;
-    return filteredByTeam.filter((row) => row.shiftDate === shiftDateFilter.format("YYYY-MM-DD"));
-  }, [allAdminRows, employeeFilter, teamFilter, shiftDateFilter]);
+    return Array.from(map.values()).sort((left, right) => left.employeeName.localeCompare(right.employeeName));
+  }, [visibleRows]);
 
   const employeeOptions = useMemo(() => {
     const map = new Map<string, string>();
-    for (const row of allAdminRows) {
-      map.set(row.employeeId, row.employee || row.employeeId);
-    }
+    for (const row of rows) map.set(row.employeeId, row.employeeName);
     return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
-  }, [allAdminRows]);
+  }, [rows]);
 
   const teamOptions = useMemo(() => {
-    const teams = Array.from(new Set(allAdminRows.map((row) => row.team).filter((team) => team && team !== "-")));
-    return teams.map((team) => ({ value: team, label: team }));
-  }, [allAdminRows]);
+    return Array.from(new Set(rows.map((row) => row.team).filter((team) => team && team !== "-")))
+      .sort()
+      .map((value) => ({ value, label: value }));
+  }, [rows]);
 
-  const scenarioResult = useMemo(() => {
-    if (!scenarioEmployeeId) return null;
-
-    const targetDate = scenarioDate.format("YYYY-MM-DD");
-    const record = events.find((e) => {
-      const dateKey = dayjs(e.workDate || e.checkIn || e.checkOut || new Date()).format("YYYY-MM-DD");
-      return e.employeeId === scenarioEmployeeId && dateKey === targetDate;
-    });
-    if (!record) return null;
-
-    const month = scenarioDate.format("YYYY-MM");
-    const roster = rosters.find((r) => r?.employeeId === scenarioEmployeeId && String(r?.month || "") === month);
-    const shift = roster?.shift;
-
-    const checkInAt = record.checkIn ? dayjs(record.checkIn) : null;
-    const checkOutAt = record.checkOut ? dayjs(record.checkOut) : null;
-
-    const toShiftDateTime = (base: dayjs.Dayjs, hhmm?: string, addDay?: boolean) => {
-      if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return null;
-      const [h, m] = hhmm.split(":").map(Number);
-      let t = base.hour(h).minute(m).second(0).millisecond(0);
-      if (addDay) t = t.add(1, "day");
-      return t;
-    };
-
-    const scheduledStart = toShiftDateTime(scenarioDate, shift?.startTime);
-    const scheduledEnd = toShiftDateTime(scenarioDate, shift?.endTime, Boolean(shift?.crossDay));
-
-    const lateMinutes =
-      checkInAt && scheduledStart ? Math.max(checkInAt.diff(scheduledStart, "minute"), 0) : 0;
-    const earlyLeaveMinutes =
-      checkOutAt && scheduledEnd ? Math.max(scheduledEnd.diff(checkOutAt, "minute"), 0) : 0;
-
-    const timeline = Array.isArray(record.timeline) ? record.timeline : [];
-    let breakOpenAt: dayjs.Dayjs | null = null;
-    let breakMinutes = 0;
-    for (const item of timeline) {
-      if (item.type === "BREAK_OUT") {
-        breakOpenAt = dayjs(item.at);
-      }
-      if (item.type === "BREAK_IN" && breakOpenAt) {
-        breakMinutes += Math.max(dayjs(item.at).diff(breakOpenAt, "minute"), 0);
-        breakOpenAt = null;
-      }
+  const calendarBuckets = useMemo(() => {
+    const map = new Map<string, AttendanceRow[]>();
+    for (const row of visibleRows) {
+      const bucket = map.get(row.shiftDate) || [];
+      bucket.push(row);
+      map.set(row.shiftDate, bucket);
     }
-    if (breakOpenAt && checkOutAt) {
-      breakMinutes += Math.max(checkOutAt.diff(breakOpenAt, "minute"), 0);
+    return map;
+  }, [visibleRows]);
+
+  const calendarRows = useMemo(() => {
+    return visibleRows.filter((row) => row.shiftDate.startsWith(calendarMonth.format("YYYY-MM")));
+  }, [calendarMonth, visibleRows]);
+
+  const kpis = useMemo(() => {
+    const present = visibleRows.filter((row) => row.status.toUpperCase() === "PRESENT").length;
+    const late = visibleRows.filter((row) => row.lateMinutes > 0 || row.anomalyList.includes("LATE")).length;
+    const leave = visibleRows.filter((row) => row.status.toUpperCase() === "LEAVE" || row.anomalyList.includes("LEAVE")).length;
+    const absent = visibleRows.filter((row) => row.status.toUpperCase() === "ABSENT" || row.status.toUpperCase() === "MISSING" || row.anomalyList.some((item) => item.includes("MISSING"))).length;
+    const otHours = visibleRows.reduce((sum, row) => sum + row.otHours, 0);
+    const workHours = visibleRows.reduce((sum, row) => sum + row.workHours, 0);
+    return { present, late, leave, absent, otHours, workHours };
+  }, [visibleRows]);
+
+  const handleTabChange = (key: string) => {
+    const target = ATTENDANCE_TABS.find((item) => item.key === key);
+    if (target) navigate(target.path);
+  };
+
+  const exportRows = useCallback(
+    (scope: AttendanceViewKey) => {
+      const source = scope === "summary" ? summaryRows : visibleRows;
+      const headers =
+        scope === "summary"
+          ? ["Employee", "Employee No.", "Team", "Present", "Late", "Leave", "Absent", "OT Hours", "Work Hours"]
+          : scope === "report"
+            ? ["Date", "Employee", "Team", "Shift", "Work Hours", "OT Hours", "Break Time", "Late", "Early Leave", "Status"]
+            : ["Date", "Employee", "Team", "Shift", "Check In", "Check Out", "Break Time", "Work Hours", "Late", "Early Leave", "Status"];
+
+      const lines = source.map((row: AttendanceRow | SummaryRow) => {
+        if (scope === "summary") {
+          const current = row as SummaryRow;
+          return [
+            current.employeeName,
+            current.employeeNo,
+            current.team,
+            String(current.present),
+            String(current.late),
+            String(current.leave),
+            String(current.absent),
+            toHours(current.otHours),
+            toHours(current.workHours),
+          ];
+        }
+
+        const current = row as AttendanceRow;
+        if (scope === "report") {
+          return [
+            current.shiftDate,
+            current.employeeName,
+            current.team,
+            current.shift,
+            formatDurationHours(current.workHours),
+            formatDurationHours(current.otHours),
+            formatMinutesHours(current.breakMinutes),
+            current.lateMinutes > 0 ? formatMinutesHours(current.lateMinutes) : "-",
+            current.earlyLeaveMinutes > 0 ? formatMinutesHours(current.earlyLeaveMinutes) : "-",
+            getStatusLabel(current.status, current.anomalyList),
+          ];
+        }
+
+        return [
+          current.shiftDate,
+          current.employeeName,
+          current.team,
+          current.shift,
+          toDateTime(current.checkIn),
+          toDateTime(current.checkOut),
+          formatMinutesHours(current.breakMinutes),
+          formatDurationHours(current.workHours),
+          current.lateMinutes > 0 ? formatMinutesHours(current.lateMinutes) : "-",
+          current.earlyLeaveMinutes > 0 ? formatMinutesHours(current.earlyLeaveMinutes) : "-",
+          getStatusLabel(current.status, current.anomalyList),
+        ];
+      });
+
+      const csvContent = [headers, ...lines].map((line) => line.map((cell) => toCsvCell(String(cell ?? ""))).join(",")).join("\n");
+      const rangeLabel = `${viewRange[0].format("YYYY-MM-DD")}_${viewRange[1].format("YYYY-MM-DD")}`;
+      const fileName = `XTTEN_Attendance_${scope}_${sanitizeFilePart(rangeLabel)}_${dayjs().format("YYYY-MM-DD-HHmm")}.csv`;
+      const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      message.success(`CSV exported: ${source.length} row(s)`);
+    },
+    [summaryRows, visibleRows, viewRange],
+  );
+
+  const activeTabKey = activeView;
+  const canSeeFilters = !selfOnly;
+
+  const recordsColumns = [
+    { title: "Date", dataIndex: "shiftDate" },
+    { title: "Team", dataIndex: "team" },
+    { title: "Employee", dataIndex: "employeeName" },
+    { title: "Shift", dataIndex: "shift" },
+    { title: "Check In", render: (_: unknown, row: AttendanceRow) => toDateTime(row.checkIn) },
+    { title: "Check Out", render: (_: unknown, row: AttendanceRow) => toDateTime(row.checkOut) },
+    { title: "Break", render: (_: unknown, row: AttendanceRow) => formatMinutesHours(row.breakMinutes) },
+    { title: "Work Hours", render: (_: unknown, row: AttendanceRow) => formatDurationHours(row.workHours) },
+    { title: "Late", render: (_: unknown, row: AttendanceRow) => (row.lateMinutes > 0 ? formatMinutesHours(row.lateMinutes) : "-") },
+    { title: "Early Leave", render: (_: unknown, row: AttendanceRow) => (row.earlyLeaveMinutes > 0 ? formatMinutesHours(row.earlyLeaveMinutes) : "-") },
+    { title: "Status", render: (_: unknown, row: AttendanceRow) => <Badge color={getStatusColor(row.status, row.anomalyList)} text={getStatusLabel(row.status, row.anomalyList)} /> },
+  ];
+
+  const reportColumns = [
+    { title: "Date", dataIndex: "shiftDate" },
+    { title: "Team", dataIndex: "team" },
+    { title: "Employee", dataIndex: "employeeName" },
+    { title: "Shift", dataIndex: "shift" },
+    { title: "Work Hours", render: (_: unknown, row: AttendanceRow) => formatDurationHours(row.workHours) },
+    { title: "OT Hours", render: (_: unknown, row: AttendanceRow) => formatDurationHours(row.otHours) },
+    { title: "Break Time", render: (_: unknown, row: AttendanceRow) => formatMinutesHours(row.breakMinutes) },
+    { title: "Late", render: (_: unknown, row: AttendanceRow) => (row.lateMinutes > 0 ? formatMinutesHours(row.lateMinutes) : "-") },
+    { title: "Early Leave", render: (_: unknown, row: AttendanceRow) => (row.earlyLeaveMinutes > 0 ? formatMinutesHours(row.earlyLeaveMinutes) : "-") },
+    { title: "Status", render: (_: unknown, row: AttendanceRow) => getStatusLabel(row.status, row.anomalyList) },
+  ];
+
+  const summaryColumns = [
+    { title: "Employee", dataIndex: "employeeName" },
+    { title: "Employee No.", dataIndex: "employeeNo" },
+    { title: "Team", dataIndex: "team" },
+    { title: "Present", dataIndex: "present" },
+    { title: "Late", dataIndex: "late" },
+    { title: "Leave", dataIndex: "leave" },
+    { title: "Absent", dataIndex: "absent" },
+    { title: "OT Hours", render: (_: unknown, row: SummaryRow) => formatDurationHours(row.otHours) },
+    { title: "Work Hours", render: (_: unknown, row: SummaryRow) => formatDurationHours(row.workHours) },
+  ];
+
+  const calendarCellRender: CalendarProps<Dayjs>["cellRender"] = (current, info) => {
+    if (info.type !== "date") return info.originNode;
+
+    const key = current.format("YYYY-MM-DD");
+    const dayRows = calendarBuckets.get(key) || [];
+    if (dayRows.length === 0) {
+      return <div style={{ minHeight: 72, opacity: 0.35 }} />;
     }
 
-    const lateRule = Number(shift?.lateAfter || 0);
-    const earlyRule = Number(shift?.earlyLeave || 0);
+    return (
+      <Space direction="vertical" size={4} style={{ width: "100%" }}>
+        <Text strong style={{ fontSize: 12 }}>{dayRows.length} record(s)</Text>
+        <Space size={4} wrap>
+          {dayRows.some((row) => row.status.toUpperCase() === "PRESENT") && <Tag color="green">Present</Tag>}
+          {dayRows.some((row) => row.lateMinutes > 0 || row.anomalyList.includes("LATE")) && <Tag color="orange">Late</Tag>}
+          {dayRows.some((row) => row.status.toUpperCase() === "LEAVE" || row.anomalyList.includes("LEAVE")) && <Tag color="blue">Leave</Tag>}
+          {dayRows.some((row) => row.status.toUpperCase() === "ABSENT" || row.status.toUpperCase() === "MISSING") && <Tag color="red">Absent</Tag>}
+        </Space>
+        {dayRows.slice(0, 2).map((row) => (
+          <div key={row.id} style={{ fontSize: 11, lineHeight: 1.4 }}>
+            {row.employeeName} · {row.team}
+          </div>
+        ))}
+      </Space>
+    );
+  };
 
-    return {
-      employeeName: record.employee?.name || scenarioEmployeeId,
-      shiftName: shift?.name || "-",
-      shiftWindow: shift?.startTime && shift?.endTime ? `${shift.startTime} - ${shift.endTime}${shift?.crossDay ? " (+1)" : ""}` : "-",
-      checkIn: record.checkIn,
-      checkOut: record.checkOut,
-      totalHours: Number(record.totalHoursDecimal ?? record.totalHours ?? 0),
-      breakMinutes,
-      lateMinutes,
-      earlyLeaveMinutes,
-      isLate: lateMinutes > lateRule,
-      isEarlyLeave: earlyLeaveMinutes > earlyRule,
-      status: (record.anomalyList || []).includes("LATE") ? "LATE" : record.status || record.anomaly || "-",
-    };
-  }, [events, rosters, scenarioDate, scenarioEmployeeId]);
-
-  const attendanceKpi = useMemo(() => {
-    const statuses = adminRows.map((row) => String(row.status || '').toUpperCase());
-    const present = statuses.filter((status) => status === 'PRESENT').length;
-    const late = statuses.filter((status) => status === 'LATE').length;
-    const absent = statuses.filter((status) => status === 'ABSENT' || status === 'MISSING').length;
-    const onLeave = statuses.filter((status) => status === 'LEAVE').length;
-    return { present, late, absent, onLeave };
-  }, [adminRows]);
-
-  const handleExportCsv = useCallback(() => {
-    const headers = [
-      "Shift Date",
-      "Employee",
-      "Team",
-      "Shift",
-      "Scheduled Time",
-      "Actual Time",
-      "Work Hours",
-      "Status",
-      "Late",
-      "Early Leave",
-      "Anomaly",
-    ];
-
-    const lines = adminRows.map((row) => {
-      const scheduledTime = `${row.scheduledStartTime || "-"} → ${row.scheduledEndTime || "-"}`;
-      const actualTime = `${toTime(row.checkIn)} → ${toTime(row.checkOut)}`;
-      const workHours = toHourMinute(row.worked);
-      const status = getStatusLabel(row.status, row.anomalyList);
-      const late = row.lateMinutes > 0 ? `${row.lateMinutes} min (${row.lateHours.toFixed(2)} hr)` : "-";
-      const earlyLeave = row.earlyLeaveMinutes > 0
-        ? `${row.earlyLeaveMinutes} min (${row.earlyLeaveHours.toFixed(2)} hr)`
-        : "-";
-      const anomaly = (Array.isArray(row.anomalyList) && row.anomalyList.length
-        ? row.anomalyList
-        : typeof row.anomaly === "string" && row.anomaly !== "-"
-          ? row.anomaly.split(",").map((item) => item.trim()).filter(Boolean)
-          : []).join(" | ") || "-";
-
-      return [
-        row.shiftDate || "-",
-        row.employee || "-",
-        row.team || "-",
-        row.shift || "-",
-        scheduledTime,
-        actualTime,
-        workHours,
-        status,
-        late,
-        earlyLeave,
-        anomaly,
-      ];
-    });
-
-    const csvContent = [headers, ...lines]
-      .map((line) => line.map((cell) => toCsvCell(String(cell))).join(","))
-      .join("\n");
-
-    const shiftDatePart = shiftDateFilter ? shiftDateFilter.format("YYYY-MM-DD") : "All";
-    const employeeLabel = employeeFilter
-      ? employeeOptions.find((option) => option.value === employeeFilter)?.label || employeeFilter
-      : undefined;
-    const filterParts: string[] = [];
-    if (teamFilter) filterParts.push(`Team-${sanitizeFilePart(teamFilter)}`);
-    if (employeeLabel) filterParts.push(`Employee-${sanitizeFilePart(employeeLabel)}`);
-    const filterPart = filterParts.length ? filterParts.join("_") : "All";
-    const exportTimePart = dayjs().format("YYYY-MM-DD-HHmm");
-    const fileName = shiftDatePart === "All" && filterPart === "All"
-      ? `XTTEN_Attendance_All_${exportTimePart}.csv`
-      : `XTTEN_Attendance_${shiftDatePart}_${filterPart}_${exportTimePart}.csv`;
-
-    const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
-    message.success(`CSV exported: ${adminRows.length} row(s)`);
-  }, [adminRows, employeeFilter, employeeOptions, shiftDateFilter, teamFilter]);
+  const filterBar = (
+    <Space wrap>
+      {activeView !== "calendar" && (
+        <RangePicker
+          value={activeView === "report" ? reportRange : activeView === "summary" ? summaryRange : recordsRange}
+          onChange={(values) => {
+            if (!values || !values[0] || !values[1]) return;
+            if (activeView === "report") setReportRange([values[0], values[1]]);
+            else if (activeView === "summary") setSummaryRange([values[0], values[1]]);
+            else setRecordsRange([values[0], values[1]]);
+          }}
+        />
+      )}
+      {activeView === "calendar" && (
+        <DatePicker picker="month" value={calendarMonth} onChange={(value) => value && setCalendarMonth(value)} />
+      )}
+      {canSeeFilters && (
+        <>
+          <Select
+            allowClear
+            style={{ width: 220 }}
+            placeholder="Team"
+            value={teamFilter}
+            onChange={setTeamFilter}
+            options={teamOptions}
+            showSearch
+            optionFilterProp="label"
+          />
+          <Select
+            allowClear
+            style={{ width: 260 }}
+            placeholder="Employee"
+            value={employeeFilter}
+            onChange={setEmployeeFilter}
+            options={employeeOptions}
+            showSearch
+            optionFilterProp="label"
+          />
+        </>
+      )}
+      <Input
+        allowClear
+        style={{ width: 260 }}
+        placeholder="Search employee / team / status"
+        value={searchText}
+        onChange={(event) => setSearchText(event.target.value)}
+      />
+      <Button
+        onClick={() => {
+          setEmployeeFilter(selfOnly ? currentEmployeeId || undefined : undefined);
+          setTeamFilter(undefined);
+          setSearchText("");
+          setRecordsRange([dayjs().startOf("month"), dayjs().endOf("day")]);
+          setReportRange([dayjs().startOf("month"), dayjs().endOf("day")]);
+          setSummaryRange([dayjs().startOf("month"), dayjs().endOf("day")]);
+          setCalendarMonth(dayjs().startOf("month"));
+        }}
+      >
+        Reset
+      </Button>
+      <Button type="primary" onClick={() => exportRows(activeView === "calendar" ? "records" : activeView)}>
+        Export
+      </Button>
+      <Button onClick={() => void fetchData()}>Refresh</Button>
+    </Space>
+  );
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Card>
-        <Space style={{ width: "100%", justifyContent: "space-between" }}>
+        <Space style={{ width: "100%", justifyContent: "space-between" }} wrap>
           <div>
             <Text strong style={{ fontSize: 18 }}>Attendance</Text>
-            <div><Text type="secondary">Employee check-in and admin attendance view</Text></div>
+            <div><Text type="secondary">Read-only attendance views. Web punch has been removed from the browser.</Text></div>
           </div>
-          <RangePicker
-            value={range}
-            onChange={(values) => {
-              if (values && values[0] && values[1]) {
-                setRange([values[0], values[1]]);
-              }
-            }}
-          />
+          <Space wrap>
+            <Tag color="green">Present {kpis.present}</Tag>
+            <Tag color="orange">Late {kpis.late}</Tag>
+            <Tag color="blue">Leave {kpis.leave}</Tag>
+            <Tag color="red">Absent {kpis.absent}</Tag>
+            <Tag color="purple">OT {kpis.otHours.toFixed(2)} h</Tag>
+            <Tag color="geekblue">Work {kpis.workHours.toFixed(2)} h</Tag>
+          </Space>
         </Space>
       </Card>
 
-      <Space style={{ width: '100%' }} size={16} wrap>
-        <Card style={{ minWidth: 180 }}><Text type="secondary">Present</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{attendanceKpi.present}</div></Card>
-        <Card style={{ minWidth: 180 }}><Text type="secondary">Late</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{attendanceKpi.late}</div></Card>
-        <Card style={{ minWidth: 180 }}><Text type="secondary">Absent</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{attendanceKpi.absent}</div></Card>
-        <Card style={{ minWidth: 180 }}><Text type="secondary">On Leave</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{attendanceKpi.onLeave}</div></Card>
-      </Space>
+      <Tabs activeKey={activeTabKey} onChange={handleTabChange} items={ATTENDANCE_TABS.map((item) => ({ key: item.path, label: item.label }))} />
 
-      <Tabs
-        activeKey={activeTopTab}
-        onChange={handleTopTabChange}
-        items={[
-          {
-            key: "self",
-            label: "Employee Attendance",
-            children: (
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card title="Today's Attendance Actions">
-                  <Space wrap>
-                    <Button
-                      type="primary"
-                      icon={<LoginOutlined />}
-                      disabled={attendanceState !== "NOT_CHECKED_IN"}
-                      loading={actionLoading}
-                      onClick={() => handleAction("checkIn")}
-                    >
-                      Check In
-                    </Button>
-                    <Button
-                      icon={<CoffeeOutlined />}
-                      disabled={attendanceState !== "WORKING"}
-                      loading={actionLoading}
-                      onClick={() => handleAction("breakOut")}
-                    >
-                      Break Out
-                    </Button>
-                    <Button
-                      icon={<CoffeeOutlined />}
-                      disabled={attendanceState !== "ON_BREAK"}
-                      loading={actionLoading}
-                      onClick={() => handleAction("breakIn")}
-                    >
-                      Break In
-                    </Button>
-                    <Button
-                      danger
-                      icon={<LogoutOutlined />}
-                      disabled={attendanceState !== "WORKING"}
-                      loading={actionLoading}
-                      onClick={() => handleAction("checkOut")}
-                    >
-                      Check Out
-                    </Button>
-                    <Tag color={attendanceState === "ON_LEAVE" ? "gold" : "blue"}>State: {attendanceState}</Tag>
-                  </Space>
-                </Card>
+      {(activeView === "records" || activeView === "report" || activeView === "summary") && (
+        <Card>
+          <Space wrap>{filterBar}</Space>
+        </Card>
+      )}
 
-                <Card title="Today's Record">
-                  {todaySelfRecord ? (
-                    <Space direction="vertical" size={6}>
-                      <Text>Check In: {toDateTime(todaySelfRecord.checkIn)}</Text>
-                      <Text>Check Out: {toDateTime(todaySelfRecord.checkOut)}</Text>
-                      <Text>Worked Hours: {toHours(todaySelfRecord.totalHoursDecimal ?? todaySelfRecord.totalHours)} hrs</Text>
-                      <Text>Status: {todaySelfRecord.status || todaySelfRecord.anomaly || "-"}</Text>
-                    </Space>
-                  ) : (
-                    <Empty description="Today no attendance record" />
-                  )}
-                </Card>
-              </Space>
-            ),
-          },
-          {
-            key: "admin",
-            label: "Admin / HR View",
-            children: (
-              <>
-                <Card style={{ marginBottom: 16 }}>
-                  <Space style={{ marginBottom: 0 }} wrap>
-                    <DatePicker
-                      allowClear
-                      placeholder="Date"
-                      value={shiftDateFilter}
-                      onChange={(value) => setShiftDateFilter(value || undefined)}
-                    />
-                    <Button onClick={() => setShiftDateFilter(resolveShiftDateToday())}>Today</Button>
-                    <Button onClick={() => setShiftDateFilter(undefined)}>Clear / All</Button>
-                    <Select
-                      allowClear
-                      style={{ width: 220 }}
-                      placeholder="Team"
-                      value={teamFilter}
-                      onChange={setTeamFilter}
-                      options={teamOptions}
-                    />
-                    <Select
-                      allowClear
-                      style={{ width: 260 }}
-                      placeholder="Employee"
-                      value={employeeFilter}
-                      onChange={setEmployeeFilter}
-                      options={employeeOptions}
-                    />
-                    <Button type="primary" onClick={handleExportCsv}>Export CSV</Button>
-                  </Space>
-                </Card>
-
-                <Card title={adminViewTitle}>
-                <Space style={{ marginBottom: 12 }} wrap>
-                  <Text type="secondary">{adminViewHint}</Text>
-                </Space>
-                <Table<AdminRow>
-                  rowKey="id"
-                  loading={loading}
-                  dataSource={adminRows}
-                  pagination={{ pageSize: 10 }}
-                  columns={[
-                    { title: "Shift Date", dataIndex: "shiftDate" },
-                    { title: "Employee", dataIndex: "employee" },
-                    { title: "Team", dataIndex: "team" },
-                    { title: "Shift", dataIndex: "shift" },
-                    {
-                      title: "Scheduled Time",
-                      render: (_, row) => `${row.scheduledStartTime || "-"} → ${row.scheduledEndTime || "-"}`,
-                    },
-                    {
-                      title: "Actual Time",
-                      render: (_, row) => `${toTime(row.checkIn)} → ${toTime(row.checkOut)}`,
-                    },
-                    { title: "Worked Hours", dataIndex: "worked", render: (v: number) => toHourMinute(v) },
-                    {
-                      title: "Status",
-                      dataIndex: "status",
-                      render: (v: string, row) => renderStatusBadge(v, row.anomalyList),
-                    },
-                    {
-                      title: "Late",
-                      dataIndex: "lateMinutes",
-                      render: (_: number, row) => {
-                        if (row.lateMinutes <= 0) return "-";
-                        return (
-                          <div style={{ lineHeight: 1.2 }}>
-                            <div>{row.lateMinutes} min</div>
-                            <div>({row.lateHours.toFixed(2)} hr)</div>
-                          </div>
-                        );
-                      },
-                    },
-                    {
-                      title: "Early Leave",
-                      dataIndex: "earlyLeaveMinutes",
-                      render: (_: number, row) => {
-                        if (row.earlyLeaveMinutes <= 0) return "-";
-                        return (
-                          <div style={{ lineHeight: 1.2 }}>
-                            <div>{row.earlyLeaveMinutes} min</div>
-                            <div>({row.earlyLeaveHours.toFixed(2)} hr)</div>
-                          </div>
-                        );
-                      },
-                    },
-                    {
-                      title: "Anomaly",
-                      dataIndex: "anomalyList",
-                      render: (list: string[], row) => {
-                        const tags = Array.isArray(list) && list.length
-                          ? list
-                          : typeof row.anomaly === "string" && row.anomaly !== "-"
-                            ? row.anomaly.split(",").map((item) => item.trim()).filter(Boolean)
-                            : [];
-                        if (!tags.length) return "-";
-                        return (
-                          <Space size={4} wrap>
-                            {tags.map((item) => {
-                              const upper = item.toUpperCase();
-                              const color = upper === "LATE" ? "orange" : upper === "EARLY_LEAVE" ? "yellow" : "default";
-                              return <Tag key={`${row.id}-${item}`} color={color}>{upper}</Tag>;
-                            })}
-                          </Space>
-                        );
-                      },
-                    },
-                  ]}
-                />
-                </Card>
-              </>
-            ),
-          },
-        ]}
-      />
-
-      <Card title="End-to-End Validation" style={{ display: 'none' }}>
-        {scenarioResult ? (
-          <Space direction="vertical" size={8}>
-            <Text strong>Attendance Results</Text>
-            <Text>Employee: {scenarioResult.employeeName}</Text>
-            <Text>Shift: {scenarioResult.shiftName} ({scenarioResult.shiftWindow})</Text>
-            <Text>Check In: {toDateTime(scenarioResult.checkIn)}</Text>
-            <Text>Check Out: {toDateTime(scenarioResult.checkOut)}</Text>
-            <Text>Hours: {toHours(scenarioResult.totalHours)} hrs</Text>
-            <Text>Break Duration: {scenarioResult.breakMinutes} min</Text>
-            <Text>Late: {scenarioResult.lateMinutes} min {scenarioResult.isLate ? <Tag color="orange">LATE</Tag> : <Tag color="green">OK</Tag>}</Text>
-            <Text>Early Leave: {scenarioResult.earlyLeaveMinutes} min {scenarioResult.isEarlyLeave ? <Tag color="red">EARLY_LEAVE</Tag> : <Tag color="green">OK</Tag>}</Text>
-            <Text>Final Status: <Tag>{scenarioResult.status}</Tag></Text>
+      {activeView === "calendar" && (
+        <Card>
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <Space wrap>{filterBar}</Space>
+            <Calendar value={calendarMonth} cellRender={calendarCellRender} onPanelChange={(value) => setCalendarMonth(value.startOf("month"))} />
+            {calendarRows.length === 0 && <Empty description="No attendance records for the selected month" />}
           </Space>
-        ) : (
-          <Empty description="No valid attendance data for selected employee/date" />
-        )}
-      </Card>
+        </Card>
+      )}
+
+      {activeView === "records" && (
+        <Card title="Clock In / Out Records">
+          <Table<AttendanceRow> rowKey="id" loading={loading} dataSource={visibleRows} pagination={{ pageSize: 10 }} columns={recordsColumns as never} />
+        </Card>
+      )}
+
+      {activeView === "report" && (
+        <Card title="Work Hours Report">
+          <Table<AttendanceRow> rowKey="id" loading={loading} dataSource={visibleRows} pagination={{ pageSize: 10 }} columns={reportColumns as never} />
+        </Card>
+      )}
+
+      {activeView === "summary" && (
+        <>
+          <Space wrap size={16}>
+            <Card style={{ minWidth: 160 }}><Text type="secondary">Present</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{kpis.present}</div></Card>
+            <Card style={{ minWidth: 160 }}><Text type="secondary">Late</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{kpis.late}</div></Card>
+            <Card style={{ minWidth: 160 }}><Text type="secondary">Leave</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{kpis.leave}</div></Card>
+            <Card style={{ minWidth: 160 }}><Text type="secondary">Absent</Text><div style={{ fontSize: 28, fontWeight: 700 }}>{kpis.absent}</div></Card>
+          </Space>
+          <Card title="Attendance Summary">
+            <Table<SummaryRow> rowKey="employeeId" loading={loading} dataSource={summaryRows} pagination={{ pageSize: 10 }} columns={summaryColumns as never} locale={{ emptyText: <Empty description="No attendance summary found" /> }} />
+          </Card>
+        </>
+      )}
     </Space>
   );
 }

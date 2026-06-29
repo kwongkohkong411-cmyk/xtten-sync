@@ -190,12 +190,44 @@ export default function Router() {
             path="/attendance"
             element={
               <AccessRoute permission="attendance:view">
-                <Attendance />
+                <Navigate to="/attendance/records" replace />
+              </AccessRoute>
+            }
+          />
+          <Route
+            path="/attendance/clock"
+            element={
+              <AccessRoute permission="attendance:view">
+                <Navigate to="/attendance/records" replace />
               </AccessRoute>
             }
           />
           <Route
             path="/attendance/records"
+            element={
+              <AccessRoute permission="attendance:view">
+                <Attendance />
+              </AccessRoute>
+            }
+          />
+          <Route
+            path="/attendance/calendar"
+            element={
+              <AccessRoute permission="attendance:view_calendar">
+                <Attendance />
+              </AccessRoute>
+            }
+          />
+          <Route
+            path="/attendance/report"
+            element={
+              <AccessRoute permission="attendance:view">
+                <Attendance />
+              </AccessRoute>
+            }
+          />
+          <Route
+            path="/attendance/summary"
             element={
               <AccessRoute permission="attendance:view">
                 <Attendance />
