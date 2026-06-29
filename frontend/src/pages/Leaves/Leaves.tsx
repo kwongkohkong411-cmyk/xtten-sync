@@ -99,7 +99,7 @@ export default function Leaves() {
   const [balanceForm] = Form.useForm();
   const [approverForm] = Form.useForm();
 
-  const canApplyLeave = hasPermission('leave:apply') || hasPermission('leave:submit') || hasPermission('leave:manage');
+  const canApplyLeave = hasPermission('leave:apply') || hasPermission('leave:manage');
   const canApproveLeave = hasPermission('leave:approve') || hasPermission('leave:manage');
   const canEditSettings = hasPermission('leave:edit_settings') || hasPermission('leave:manage');
   const canViewSettings = hasPermission('leave:view_settings') || canEditSettings;

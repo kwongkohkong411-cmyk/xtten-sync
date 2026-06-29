@@ -45,7 +45,7 @@ const GROUPS: PermissionGroup[] = [
     groupKey: "leave",
     title: "Leave 请假审批",
     children: [
-      { key: "leave:submit", label: "提交请假" },
+      { key: "leave:apply", label: "提交请假" },
       { key: "leave:view", label: "查看请假" },
       { key: "leave:manage", label: "审批请假" },
     ],

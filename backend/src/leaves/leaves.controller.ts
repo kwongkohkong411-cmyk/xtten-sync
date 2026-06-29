@@ -24,7 +24,7 @@ type RequestWithUser = {
 export class LeavesController {
   constructor(private readonly leavesService: LeavesService) {}
 
-  @RequirePermission('leave:submit')
+  @RequirePermission(['leave:apply', 'leave:submit'])
   @Post()
   create(@Req() req: RequestWithUser, @Body() createLeaveDto: CreateLeaveDto) {
     return this.leavesService.create(req, createLeaveDto);

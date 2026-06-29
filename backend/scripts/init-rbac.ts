@@ -22,7 +22,7 @@ async function main() {
     "shift:manage",
     "leave:view",
     "leave:manage",
-    "leave:submit",
+    "leave:apply",
     "holiday:view",
     "holiday:manage",
     "activity:view",
@@ -38,7 +38,7 @@ async function main() {
     HR: ["attendance:view", "leave:manage", "holiday:view", "report:view", "report:export", "activity:view"],
     MANAGER: ["attendance:view", "activity:view", "report:view", "leave:view"],
     TEAM_LEAD: ["attendance:view", "activity:view", "report:view"],
-    EMPLOYEE: ["attendance:view", "activity:view", "leave:view", "leave:submit"],
+    EMPLOYEE: ["attendance:view", "activity:view", "leave:view", "leave:apply"],
     AUDITOR: ["report:view", "attendance:view"],
   };
 

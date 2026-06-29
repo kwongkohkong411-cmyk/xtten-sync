@@ -50,7 +50,7 @@ async function main() {
     'shift:manage',
     'leave:view',
     'leave:manage',
-    'leave:submit',
+    'leave:apply',
     'activity:view',
     'activity:manage',
     'report:view',
@@ -82,7 +82,7 @@ async function main() {
       'attendance:view',
       'activity:view',
       'leave:view',
-      'leave:submit',
+      'leave:apply',
     ],
     AUDITOR: ['report:view', 'attendance:view'],
   };

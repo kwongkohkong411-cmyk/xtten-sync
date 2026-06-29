@@ -40,7 +40,7 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const requiredPermission = this.reflector.getAllAndOverride<string>(
+    const requiredPermission = this.reflector.getAllAndOverride<string | string[]>(
       REQUIRED_PERMISSION_KEY,
       [context.getHandler(), context.getClass()],
     );
@@ -56,10 +56,26 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('Unauthorized user context');
     }
 
-    const decision = await this.rbacCore.decidePermission(
-      user,
-      requiredPermission,
-    );
+    const requiredPermissions = Array.isArray(requiredPermission)
+      ? requiredPermission
+      : [requiredPermission];
+
+    let decision:
+      | Awaited<ReturnType<RbacCoreService['decidePermission']>>
+      | undefined;
+
+    for (const permission of requiredPermissions) {
+      const currentDecision = await this.rbacCore.decidePermission(user, permission);
+      if (currentDecision.allowed) {
+        decision = currentDecision;
+        break;
+      }
+      decision = currentDecision;
+    }
+
+    if (!decision) {
+      throw new ForbiddenException('Permission decision unavailable');
+    }
 
     const path = request.route?.path || request.url;
     const method = request.method;
@@ -79,7 +95,7 @@ export class PermissionsGuard implements CanActivate {
 
     await this.rbacCore.recordPermissionDecision({
       actor: user,
-      permission: requiredPermission,
+      permission: requiredPermissions.join(' | '),
       allowed: decision.allowed,
       path,
       method,
@@ -103,7 +119,9 @@ export class PermissionsGuard implements CanActivate {
     });
 
     if (!decision.allowed) {
-      throw new ForbiddenException(`Missing permission: ${requiredPermission}`);
+      throw new ForbiddenException(
+        `Missing permission: ${requiredPermissions.join(' or ')}`,
+      );
     }
 
     return true;
