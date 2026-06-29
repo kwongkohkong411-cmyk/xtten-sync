@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, DatePicker, Empty, Select, Space, Table, Tabs, Tag, Typography, message } from "antd";
+import { Badge, Button, Card, DatePicker, Empty, Select, Space, Table, Tabs, Tag, Typography, message } from "antd";
 import { CoffeeOutlined, LoginOutlined, LogoutOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { breakIn, breakOut, checkIn, checkOut, getAttendanceEvents } from "../../api/attendance";
@@ -11,6 +11,8 @@ const { RangePicker } = DatePicker;
 type AttendanceEvent = {
   id: string;
   employeeId: string;
+  shiftDate?: string;
+  date?: string;
   workDate?: string;
   status?: string;
   ruleSource?: string;
@@ -45,6 +47,28 @@ type RosterRecord = {
   workGroup?: { name?: string };
 };
 
+type AdminRow = {
+  id: string;
+  employeeId: string;
+  shiftDate: string;
+  employee: string;
+  team: string;
+  shift: string;
+  scheduledStartTime: string;
+  scheduledEndTime: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  lateMinutes: number;
+  lateHours: number;
+  earlyLeaveMinutes: number;
+  earlyLeaveHours: number;
+  worked: number;
+  status: string;
+  anomalyList: string[];
+  anomaly: string;
+  ruleSource: string;
+};
+
 type ApiError = {
   response?: { data?: { message?: string } };
   message?: string;
@@ -57,6 +81,58 @@ function toDateTime(v?: string | null) {
 function toHours(v?: number | null) {
   const n = Number(v ?? 0);
   return n > 0 ? n.toFixed(2) : "0.00";
+}
+
+function toTime(v?: string | null) {
+  return v ? dayjs(v).format("HH:mm") : "-";
+}
+
+function toHourMinute(v?: number | null) {
+  const totalMinutes = Math.round(Number(v ?? 0) * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${minutes}m`;
+}
+
+function deriveShiftDate(event: AttendanceEvent) {
+  const explicitDate = event.shiftDate || event.workDate || event.date;
+  if (explicitDate) {
+    const parsed = dayjs(explicitDate);
+    if (parsed.isValid()) return parsed.format("YYYY-MM-DD");
+  }
+
+  const scheduledStart = event.scheduledStartTime;
+  if (scheduledStart && (scheduledStart.includes("-") || scheduledStart.includes("T") || scheduledStart.includes("/"))) {
+    const parsed = dayjs(scheduledStart);
+    if (parsed.isValid()) return parsed.format("YYYY-MM-DD");
+  }
+
+  return "-";
+}
+
+function renderStatusBadge(status: string, anomalyList: string[]) {
+  const source = `${status} ${anomalyList.join(" ")}`.toUpperCase();
+
+  if (source.includes("HOLIDAY")) {
+    return <Badge color="purple" text="Holiday" />;
+  }
+  if (source.includes("ABSENT")) {
+    return <Badge color="red" text="Absent" />;
+  }
+  if (source.includes("EARLY_LEAVE")) {
+    return <Badge color="yellow" text="Early Leave" />;
+  }
+  if (source.includes("LEAVE")) {
+    return <Badge color="blue" text="Leave" />;
+  }
+  if (source.includes("LATE")) {
+    return <Badge color="orange" text="Late" />;
+  }
+  if (source.includes("PRESENT")) {
+    return <Badge color="green" text="Present" />;
+  }
+
+  return <Badge color="default" text={status || "-"} />;
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -77,6 +153,7 @@ export default function Attendance() {
   const [rosters, setRosters] = useState<RosterRecord[]>([]);
   const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(() => [dayjs().startOf("month"), dayjs().endOf("day")]);
   const [employeeFilter, setEmployeeFilter] = useState<string | undefined>(undefined);
+  const [shiftDateFilter, setShiftDateFilter] = useState<dayjs.Dayjs | undefined>(undefined);
   const [scenarioEmployeeId, setScenarioEmployeeId] = useState<string | undefined>(() => currentEmployeeId || undefined);
   const [scenarioDate, setScenarioDate] = useState(dayjs());
 
@@ -167,7 +244,7 @@ export default function Attendance() {
     }
   };
 
-  const adminRows = useMemo(() => {
+  const adminRows = useMemo<AdminRow[]>(() => {
     const rosterMap = new Map<string, { shift: string; team: string }>();
     for (const roster of rosters) {
       const month = String(roster?.month || "");
@@ -188,6 +265,7 @@ export default function Attendance() {
       return {
         id: e.id,
         employeeId: e.employeeId,
+        shiftDate: deriveShiftDate(e),
         employee: e.employee?.name || e.employeeId,
         team: rosterInfo?.team || "-",
         shift: rosterInfo?.shift || e.shift?.name || "-",
@@ -201,14 +279,16 @@ export default function Attendance() {
         earlyLeaveHours: Number(e.earlyLeaveHours ?? earlyLeaveMinutes / 60),
         worked,
         status: e.status || "-",
+        anomalyList: Array.isArray(e.anomalyList) ? e.anomalyList : [],
         anomaly: Array.isArray(e.anomalyList) && e.anomalyList.length ? e.anomalyList.join(", ") : e.anomaly || "-",
         ruleSource: e.ruleSource || "-",
       };
     });
 
-    if (!employeeFilter) return rows;
-    return rows.filter((row) => row.employeeId === employeeFilter);
-  }, [events, rosters, employeeFilter]);
+    const filteredByEmployee = employeeFilter ? rows.filter((row) => row.employeeId === employeeFilter) : rows;
+    if (!shiftDateFilter) return filteredByEmployee;
+    return filteredByEmployee.filter((row) => row.shiftDate === shiftDateFilter.format("YYYY-MM-DD"));
+  }, [events, rosters, employeeFilter, shiftDateFilter]);
 
   const employeeOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -374,6 +454,12 @@ export default function Attendance() {
             children: (
               <Card title="员工出勤明细">
                 <Space style={{ marginBottom: 12 }} wrap>
+                  <DatePicker
+                    allowClear
+                    placeholder="Shift Date"
+                    value={shiftDateFilter}
+                    onChange={(value) => setShiftDateFilter(value || undefined)}
+                  />
                   <Select
                     allowClear
                     style={{ width: 260 }}
@@ -383,41 +469,76 @@ export default function Attendance() {
                     options={employeeOptions}
                   />
                 </Space>
-                <Table
+                <Table<AdminRow>
                   rowKey="id"
                   loading={loading}
                   dataSource={adminRows}
                   pagination={{ pageSize: 10 }}
                   columns={[
+                    { title: "Shift Date", dataIndex: "shiftDate" },
                     { title: "员工", dataIndex: "employee" },
                     { title: "团队", dataIndex: "team" },
                     { title: "班次", dataIndex: "shift" },
-                    { title: "Scheduled Start", dataIndex: "scheduledStartTime" },
-                    { title: "Scheduled End", dataIndex: "scheduledEndTime" },
-                    { title: "Actual Check In", dataIndex: "checkIn", render: (v: string) => toDateTime(v) },
-                    { title: "Actual Check Out", dataIndex: "checkOut", render: (v: string) => toDateTime(v) },
                     {
-                      title: "Late Minutes",
-                      dataIndex: "lateMinutes",
-                      render: (_: number, row: any) =>
-                        `${row.lateMinutes} min (${row.lateHours.toFixed(2)} h)`,
+                      title: "Scheduled Time",
+                      render: (_, row) => `${row.scheduledStartTime || "-"} → ${row.scheduledEndTime || "-"}`,
                     },
                     {
-                      title: "Early Leave Minutes",
-                      dataIndex: "earlyLeaveMinutes",
-                      render: (_: number, row: any) =>
-                        `${row.earlyLeaveMinutes} min (${row.earlyLeaveHours.toFixed(2)} h)`,
+                      title: "Actual Time",
+                      render: (_, row) => `${toTime(row.checkIn)} → ${toTime(row.checkOut)}`,
                     },
-                    { title: "实际工时", dataIndex: "worked", render: (v: number) => `${toHours(v)} h` },
+                    { title: "实际工时", dataIndex: "worked", render: (v: number) => toHourMinute(v) },
                     {
                       title: "Status",
                       dataIndex: "status",
-                      render: (v: string) => <Tag color={String(v).includes("LATE") ? "orange" : String(v).includes("ABSENT") ? "red" : "green"}>{v}</Tag>,
+                      render: (v: string, row) => renderStatusBadge(v, row.anomalyList),
+                    },
+                    {
+                      title: "Late",
+                      dataIndex: "lateMinutes",
+                      render: (_: number, row) => {
+                        if (row.lateMinutes <= 0) return "-";
+                        return (
+                          <div style={{ lineHeight: 1.2 }}>
+                            <div>{row.lateMinutes} min</div>
+                            <div>({row.lateHours.toFixed(2)} hr)</div>
+                          </div>
+                        );
+                      },
+                    },
+                    {
+                      title: "Early Leave",
+                      dataIndex: "earlyLeaveMinutes",
+                      render: (_: number, row) => {
+                        if (row.earlyLeaveMinutes <= 0) return "-";
+                        return (
+                          <div style={{ lineHeight: 1.2 }}>
+                            <div>{row.earlyLeaveMinutes} min</div>
+                            <div>({row.earlyLeaveHours.toFixed(2)} hr)</div>
+                          </div>
+                        );
+                      },
                     },
                     {
                       title: "Anomaly",
-                      dataIndex: "anomaly",
-                      render: (v: string) => <Tag color={v && v !== "-" ? "volcano" : "default"}>{v}</Tag>,
+                      dataIndex: "anomalyList",
+                      render: (list: string[], row) => {
+                        const tags = Array.isArray(list) && list.length
+                          ? list
+                          : typeof row.anomaly === "string" && row.anomaly !== "-"
+                            ? row.anomaly.split(",").map((item) => item.trim()).filter(Boolean)
+                            : [];
+                        if (!tags.length) return "-";
+                        return (
+                          <Space size={4} wrap>
+                            {tags.map((item) => {
+                              const upper = item.toUpperCase();
+                              const color = upper === "LATE" ? "orange" : upper === "EARLY_LEAVE" ? "yellow" : "default";
+                              return <Tag key={`${row.id}-${item}`} color={color}>{upper}</Tag>;
+                            })}
+                          </Space>
+                        );
+                      },
                     },
                   ]}
                 />
