@@ -17,6 +17,7 @@ import { SwapOutlined, UserAddOutlined, UserDeleteOutlined } from "@ant-design/i
 import PageHeader from "../../components/ui/PageHeader/PageHeader";
 import { getDepartments } from "../../api/departments";
 import { getEmployees, updateEmployee } from "../../api/employees";
+import { getStatusColor } from "../../utils/statusColors";
 
 type Department = {
   id: string;
@@ -369,7 +370,7 @@ export default function DepartmentMembers() {
       title: "Status",
       dataIndex: "status",
       render: (status: string) => (
-        <Tag color={status === "ACTIVE" ? "green" : "red"}>{status}</Tag>
+        <Tag color={getStatusColor(status)}>{status}</Tag>
       ),
     },
     {

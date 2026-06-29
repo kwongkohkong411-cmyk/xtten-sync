@@ -33,6 +33,7 @@ import {
 import type { Company } from "../../types/company";
 import CompanyRbacTab from "./CompanyRbacTab";
 import { getCurrentUser, isSuperAdminOwner } from "../../utils/auth";
+import { getStatusColor } from "../../utils/statusColors";
 
 const { Title, Text } = Typography;
 
@@ -196,7 +197,7 @@ export default function CompanyDetail() {
       title: "Status",
       dataIndex: "status",
       render: (value: string) => (
-        <Tag color={value === "ACTIVE" ? "green" : "volcano"}>{value}</Tag>
+        <Tag color={getStatusColor(value)}>{value}</Tag>
       ),
     },
     {
@@ -249,7 +250,7 @@ export default function CompanyDetail() {
                   <Descriptions.Item label="Timezone">{company.timezone}</Descriptions.Item>
                   <Descriptions.Item label="Country / Region">{company.country || "-"}</Descriptions.Item>
                   <Descriptions.Item label="Status">
-                    <Tag color={company.status === "ACTIVE" ? "green" : "volcano"}>{company.status}</Tag>
+                    <Tag color={getStatusColor(company.status)}>{company.status}</Tag>
                   </Descriptions.Item>
                   <Descriptions.Item label="Created At">
                     {new Date(company.createdAt).toLocaleString()}

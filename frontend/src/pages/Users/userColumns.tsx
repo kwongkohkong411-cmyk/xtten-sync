@@ -6,6 +6,7 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { User } from "./types";
+import { getStatusColor } from "../../utils/statusColors";
 
 export function getUserColumns(
   onEdit: (user: User) => void,
@@ -43,7 +44,7 @@ export function getUserColumns(
       title: "Status",
       dataIndex: "status",
       render: (status: string) => (
-        <Tag color={status === "ACTIVE" ? "green" : "red"}>
+        <Tag color={getStatusColor(status)}>
           {status}
         </Tag>
       ),

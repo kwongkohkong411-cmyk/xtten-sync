@@ -26,6 +26,7 @@ import {
   updateCompany,
   deleteCompany,
 } from "@/api/company";
+import { getStatusColor } from "@/utils/statusColors";
 
 export default function Companies() {
   const { t } = useTranslation();
@@ -166,7 +167,7 @@ export default function Companies() {
       title: "Status",
       dataIndex: "status",
       render: (status: string) => (
-        <Tag color={status === "ACTIVE" ? "green" : "volcano"}>
+        <Tag color={getStatusColor(status)}>
           {status}
         </Tag>
       ),

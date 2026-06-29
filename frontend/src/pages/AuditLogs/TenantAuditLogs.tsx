@@ -3,6 +3,7 @@ import { Alert, Button, Card, Select, Space, Table, Tag, Typography, message } f
 
 import { getCompanies } from "../../api/company";
 import { getTenantAuditLogs } from "../../api/tenantAuditLogs";
+import { getScopeColor } from "../../utils/statusColors";
 
 const { Title, Text } = Typography;
 
@@ -69,7 +70,7 @@ export default function TenantAuditLogs({ initialScope }: Props) {
       title: "Scope",
       dataIndex: "scope",
       width: 110,
-      render: (value: string) => <Tag color={value === "CORE" ? "blue" : "purple"}>{value}</Tag>,
+      render: (value: string) => <Tag color={getScopeColor(value)}>{value}</Tag>,
     },
     {
       title: "Action",

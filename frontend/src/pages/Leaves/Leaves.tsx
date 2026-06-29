@@ -46,6 +46,7 @@ import {
   type LeaveTypeDto,
 } from '@/api/leave-settings';
 import { hasPermission } from '@/utils/auth';
+import { getStatusColor } from '@/utils/statusColors';
 
 type LeaveRequest = {
   id: string;
@@ -70,12 +71,6 @@ type UserOption = {
 
 function formatRange(startDate: string, endDate: string) {
   return `${dayjs(startDate).format('YYYY-MM-DD')} - ${dayjs(endDate).format('YYYY-MM-DD')}`;
-}
-
-function getStatusColor(status: LeaveRequest['status']) {
-  if (status === 'APPROVED') return 'green';
-  if (status === 'REJECTED') return 'red';
-  return 'orange';
 }
 
 export default function Leaves() {

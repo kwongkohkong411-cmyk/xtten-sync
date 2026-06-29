@@ -12,7 +12,7 @@ const referenceColumns = [
   {
     title: "Cross Day",
     dataIndex: "crossDay",
-    render: (v: boolean) => (v ? <Tag color="purple">Yes</Tag> : <Tag>No</Tag>),
+    render: (v: boolean) => (v ? <Tag color="blue">Yes</Tag> : <Tag>No</Tag>),
   },
   { title: "Break", dataIndex: "break" },
   { title: "Applicable Team", dataIndex: "team" },

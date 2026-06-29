@@ -28,6 +28,7 @@ import {
   updateWorkGroup,
 } from "../../api/workGroups";
 import { getCompanies } from "../../api/company";
+import { getStatusColor } from "../../utils/statusColors";
 
 const { Text } = Typography;
 
@@ -185,7 +186,7 @@ export default function WorkGroups() {
       title: "Status",
       dataIndex: "isActive",
       render: (value: boolean) =>
-        value ? <Tag color="green">ACTIVE</Tag> : <Tag color="red">INACTIVE</Tag>,
+        value ? <Tag color={getStatusColor("ACTIVE")}>ACTIVE</Tag> : <Tag color={getStatusColor("INACTIVE")}>INACTIVE</Tag>,
     },
     {
       title: "Sort",

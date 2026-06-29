@@ -4,6 +4,7 @@ import { CoffeeOutlined, LoginOutlined, LogoutOutlined } from "@ant-design/icons
 import dayjs from "dayjs";
 import { breakIn, breakOut, checkIn, checkOut, getAttendanceEvents } from "../../api/attendance";
 import { getRosters } from "../../api/rosters";
+import { getStatusColor } from "../../utils/statusColors";
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -158,7 +159,7 @@ function renderStatusBadge(status: string, anomalyList: string[]) {
   const source = `${status} ${anomalyList.join(" ")}`.toUpperCase();
 
   if (source.includes("HOLIDAY")) {
-    return <Badge color="purple" text="Holiday" />;
+    return <Badge color={getStatusColor("HOLIDAY")} text="Holiday" />;
   }
   if (source.includes("ABSENT")) {
     return <Badge color="red" text="Absent" />;

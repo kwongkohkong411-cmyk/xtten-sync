@@ -30,6 +30,7 @@ import {
   updateShiftTemplate,
 } from "../../api/shiftTemplates";
 import { getCompanies } from "../../api/company";
+import { getStatusColor } from "../../utils/statusColors";
 
 const { Text } = Typography;
 
@@ -225,7 +226,7 @@ export default function ShiftTemplates() {
           <Tag>{record.startTime}</Tag>
           <span>→</span>
           <Tag>{record.endTime}</Tag>
-          {record.crossDay && <Tag color="purple">Cross Day</Tag>}
+          {record.crossDay && <Tag color="blue">Cross Day</Tag>}
         </Space>
       ),
     },
@@ -249,7 +250,7 @@ export default function ShiftTemplates() {
       title: "Status",
       dataIndex: "isActive",
       render: (value: boolean) =>
-        value ? <Tag color="green">ACTIVE</Tag> : <Tag color="red">INACTIVE</Tag>,
+        value ? <Tag color={getStatusColor("ACTIVE")}>ACTIVE</Tag> : <Tag color={getStatusColor("INACTIVE")}>INACTIVE</Tag>,
     },
     {
       title: "Actions",
@@ -368,7 +369,7 @@ export default function ShiftTemplates() {
                   <Tag>{dayjs(startTime).format("HH:mm")}</Tag>
                   →
                   <Tag>{dayjs(endTime).format("HH:mm")}</Tag>
-                  {shiftInfo.crossDay && <Tag color="purple">🌙 Cross Day</Tag>}
+                  {shiftInfo.crossDay && <Tag color="blue">🌙 Cross Day</Tag>}
                 </Text>
 
                 <Text>Total Duration: {shiftInfo.totalHours} hours</Text>

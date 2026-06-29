@@ -24,6 +24,7 @@ import { getDepartments, createDepartment, updateDepartment, deleteDepartment } 
 import { getCompanies } from "../../api/company";
 import { getWorkGroups } from "../../api/workGroups";
 import { hasPermission } from "../../utils/auth";
+import { getStatusColor } from "../../utils/statusColors";
 
 const { Text } = Typography;
 
@@ -260,7 +261,7 @@ export default function Departments() {
                     <Text type="secondary">{department.code}</Text>
                   </Space>
                 }
-                extra={<Tag color={department.status === "ACTIVE" ? "green" : "red"}>{department.status}</Tag>}
+                extra={<Tag color={getStatusColor(department.status)}>{department.status}</Tag>}
                 actions={
                   canManageDepartment
                     ? [
@@ -289,7 +290,7 @@ export default function Departments() {
                   <Text>Manager: {department.manager?.name || "Unassigned"}</Text>
                   <Space>
                     <Tag color="blue">Employees: {department._count?.employees ?? 0}</Tag>
-                    <Tag color="purple">Teams: {department._count?.workGroups ?? department.workGroups?.length ?? 0}</Tag>
+                    <Tag color="cyan">Teams: {department._count?.workGroups ?? department.workGroups?.length ?? 0}</Tag>
                   </Space>
 
                   <Tree
