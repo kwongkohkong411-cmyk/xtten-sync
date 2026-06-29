@@ -1380,6 +1380,10 @@ export class AttendanceService {
         anomalyList.push('LATE');
       }
 
+      if ((row.earlyLeaveMinutes || 0) > 0) {
+        anomalyList.push('EARLY_LEAVE');
+      }
+
       return {
         ...row,
         anomalyList,
