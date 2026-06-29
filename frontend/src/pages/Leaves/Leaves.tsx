@@ -20,6 +20,7 @@ import {
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
+import { useLocation, useNavigate } from "react-router-dom";
 import PageHeader from "../../components/ui/PageHeader/PageHeader";
 import SearchBar from "../../components/ui/SearchBar";
 import { createLeave, getLeaves, updateLeave } from "@/api/leaves";
@@ -89,6 +90,8 @@ function getStatusColor(status: LeaveRequest["status"]) {
 }
 
 export default function Leaves() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
@@ -136,6 +139,15 @@ export default function Leaves() {
       setUsers([]);
     }
   }, []);
+
+  useEffect(() => {
+    if (location.pathname.startsWith("/leave-settings")) {
+      setRootTab("settings");
+      return;
+    }
+
+    setRootTab("requests");
+  }, [location.pathname]);
 
   useEffect(() => {
     void loadLeaves();
@@ -442,7 +454,14 @@ export default function Leaves() {
         extra={
           <Space>
             <Button onClick={() => void loadLeaves()}>Refresh</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setRequestTab("apply")}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setRequestTab("apply");
+                navigate("/leave-requests");
+              }}
+            >
               Apply Leave
             </Button>
           </Space>
@@ -452,7 +471,7 @@ export default function Leaves() {
       <Card style={{ marginBottom: 16, borderRadius: 16 }}>
         <Tabs
           activeKey={rootTab}
-          onChange={(key) => setRootTab(key as "requests" | "settings")}
+          onChange={(key) => navigate(key === "settings" ? "/leave-settings" : "/leave-requests")}
           items={[
             { key: "requests", label: "Leave Request" },
             { key: "settings", label: "Leave Settings" },

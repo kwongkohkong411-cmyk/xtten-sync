@@ -261,6 +261,14 @@ export default function Router() {
             }
           />
           <Route
+            path="/leave-settings"
+            element={
+              <PermissionRoute permission="leave:view_settings">
+                <Leaves />
+              </PermissionRoute>
+            }
+          />
+          <Route
             path="/holiday-settings"
             element={
               <PermissionRoute permission="holiday:view">

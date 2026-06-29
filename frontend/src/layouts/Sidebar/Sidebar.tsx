@@ -97,6 +97,7 @@ export default function Sidebar() {
       required: "leave:view",
       children: [
         { key: "/leave-requests", label: "Leave Requests", required: "leave:view" },
+        { key: "/leave-settings", label: "Leave Settings", required: "leave:view_settings" },
         { key: "/holiday-settings", label: "Holiday Settings", required: "holiday:view" },
       ],
     },
