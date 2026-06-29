@@ -50,6 +50,13 @@ type AttendanceTimelineEvent = {
   autoRepaired?: boolean;
 };
 
+type LateRuleDecision = {
+  threshold: Date;
+  source: 'ROSTER_DETAIL' | 'ROSTER_MONTH' | 'DEFAULT';
+  startTime?: string;
+  lateAfterMinutes?: number;
+};
+
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
@@ -105,10 +112,119 @@ export class AttendanceService {
     return days;
   }
 
-  private computeAnomaly(record: {
-    checkIn: Date | null;
-    checkOut: Date | null;
-  }) {
+  private toMonthKey(date: Date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
+  private buildThresholdByStartTime(
+    baseDate: Date,
+    startTime: string,
+    lateAfterMinutes: number,
+  ) {
+    const [hourText, minuteText] = startTime.split(':');
+    const hour = Number(hourText || 9);
+    const minute = Number(minuteText || 0);
+
+    const threshold = new Date(baseDate);
+    threshold.setHours(hour, minute, 0, 0);
+    threshold.setMinutes(threshold.getMinutes() + Math.max(0, lateAfterMinutes));
+    return threshold;
+  }
+
+  private buildDefaultLateThreshold(baseDate: Date) {
+    const [hourText, minuteText] = ATTENDANCE_RULE.LATE_THRESHOLD.split(':');
+    const hour = Number(hourText || 9);
+    const minute = Number(minuteText || 15);
+
+    const threshold = new Date(baseDate);
+    threshold.setHours(hour, minute, 0, 0);
+    return threshold;
+  }
+
+  private async resolveLateRuleForDate(
+    employeeId: string,
+    companyId: string,
+    date: Date,
+  ): Promise<LateRuleDecision> {
+    const day = this.normalizeDayStart(date);
+
+    const rosterDetail = await this.prisma.rosterDetail.findFirst({
+      where: {
+        companyId,
+        date: day,
+        roster: {
+          employeeId,
+        },
+      },
+      select: {
+        shiftTemplate: {
+          select: {
+            startTime: true,
+            lateAfter: true,
+          },
+        },
+      },
+    });
+
+    if (rosterDetail?.shiftTemplate?.startTime) {
+      const lateAfter = rosterDetail.shiftTemplate.lateAfter ?? 10;
+      return {
+        threshold: this.buildThresholdByStartTime(
+          day,
+          rosterDetail.shiftTemplate.startTime,
+          lateAfter,
+        ),
+        source: 'ROSTER_DETAIL',
+        startTime: rosterDetail.shiftTemplate.startTime,
+        lateAfterMinutes: lateAfter,
+      };
+    }
+
+    const roster = await this.prisma.roster.findFirst({
+      where: {
+        employeeId,
+        companyId,
+        month: this.toMonthKey(day),
+      },
+      select: {
+        shift: {
+          select: {
+            startTime: true,
+            lateAfter: true,
+          },
+        },
+      },
+    });
+
+    if (roster?.shift?.startTime) {
+      const lateAfter = roster.shift.lateAfter ?? 10;
+      return {
+        threshold: this.buildThresholdByStartTime(
+          day,
+          roster.shift.startTime,
+          lateAfter,
+        ),
+        source: 'ROSTER_MONTH',
+        startTime: roster.shift.startTime,
+        lateAfterMinutes: lateAfter,
+      };
+    }
+
+    return {
+      threshold: this.buildDefaultLateThreshold(day),
+      source: 'DEFAULT',
+    };
+  }
+
+  private computeAnomaly(
+    record: {
+      checkIn: Date | null;
+      checkOut: Date | null;
+    },
+    lateThreshold: Date,
+  ) {
     if (!record.checkIn) {
       return 'MISSING_CHECK_IN';
     }
@@ -117,11 +233,6 @@ export class AttendanceService {
       return 'MISSING_CHECK_OUT';
     }
 
-    const [hourText, minuteText] = ATTENDANCE_RULE.LATE_THRESHOLD.split(':');
-    const lateHour = Number(hourText || 9);
-    const lateMinute = Number(minuteText || 15);
-    const lateThreshold = new Date(record.checkIn);
-    lateThreshold.setHours(lateHour, lateMinute, 0, 0);
     if (record.checkIn.getTime() > lateThreshold.getTime()) {
       return 'LATE';
     }
@@ -517,6 +628,12 @@ export class AttendanceService {
     const employee = await this.getEmployee(user.id);
 
     const checkInAt = new Date();
+    const lateRule = await this.resolveLateRuleForDate(
+      employee.id,
+      employee.companyId,
+      checkInAt,
+    );
+    const isLate = checkInAt.getTime() > lateRule.threshold.getTime();
     const workDate = this.resolveWorkDate({
       date: checkInAt,
       checkIn: checkInAt,
@@ -539,7 +656,7 @@ export class AttendanceService {
         companyId: employee.companyId,
         date: workDate,
         checkIn: checkInAt,
-        status: 'PRESENT',
+        status: isLate ? 'LATE' : 'PRESENT',
       },
     });
 
@@ -554,10 +671,15 @@ export class AttendanceService {
         workDate,
         checkIn: created.checkIn,
         status: created.status,
+        isLate,
       },
       meta: {
         source: 'attendance.service.checkIn',
         workDateStrategy: ATTENDANCE_RULE.WORK_DATE_STRATEGY,
+        lateThreshold: lateRule.threshold,
+        lateRuleSource: lateRule.source,
+        shiftStartTime: lateRule.startTime,
+        lateAfterMinutes: lateRule.lateAfterMinutes,
       },
     });
 
@@ -830,21 +952,41 @@ export class AttendanceService {
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
 
-    const events = rows.map((row) => {
-      const anomaly = this.computeAnomaly({
-        checkIn: row.checkIn,
-        checkOut: row.checkOut,
-      });
+    const lateRuleCache = new Map<string, LateRuleDecision>();
 
-      return {
+    const events: any[] = [];
+
+    for (const row of rows) {
+      const workDate = this.resolveWorkDate({
+        date: row.date,
+        checkIn: row.checkIn,
+      });
+      const cacheKey = `${row.employeeId}:${this.dateKey(workDate)}`;
+
+      let lateRule = lateRuleCache.get(cacheKey);
+      if (!lateRule) {
+        lateRule = await this.resolveLateRuleForDate(
+          row.employeeId,
+          row.companyId,
+          workDate,
+        );
+        lateRuleCache.set(cacheKey, lateRule);
+      }
+
+      const anomaly = this.computeAnomaly(
+        {
+          checkIn: row.checkIn,
+          checkOut: row.checkOut,
+        },
+        lateRule.threshold,
+      );
+
+      events.push({
         id: row.id,
         employeeId: row.employeeId,
         companyId: row.companyId,
         date: row.date,
-        workDate: this.resolveWorkDate({
-          date: row.date,
-          checkIn: row.checkIn,
-        }),
+        workDate,
         checkIn: row.checkIn,
         checkOut: row.checkOut,
         totalHours: row.totalHours ? Number(row.totalHours) : null,
@@ -854,8 +996,10 @@ export class AttendanceService {
         isMissing:
           anomaly === 'MISSING_CHECK_IN' || anomaly === 'MISSING_CHECK_OUT',
         employee: row.employee,
-      };
-    });
+        lateThreshold: lateRule.threshold,
+        lateRuleSource: lateRule.source,
+      });
+    }
 
     const existingByEmployeeDay = new Set(
       events.map(
@@ -1067,6 +1211,7 @@ export class AttendanceService {
         startDate,
         endDate,
         lateThreshold: ATTENDANCE_RULE.LATE_THRESHOLD,
+        lateRule: 'SHIFT_TEMPLATE_START_TIME_PLUS_LATE_AFTER_OR_DEFAULT',
         workDateStrategy: ATTENDANCE_RULE.WORK_DATE_STRATEGY,
       },
       events: withTimeline,
