@@ -1,4 +1,4 @@
-import { Menu } from "antd";
+import { Button, Divider, Menu, Modal, Space, Tag, Typography, message } from "antd";
 import React, { useState, useEffect } from "react";
 import {
   DashboardOutlined,
@@ -16,11 +16,17 @@ import {
 } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import { hasPermission, getCurrentUser } from "../../utils/auth";
+import { getAgentReleases, openAgentDownload, type AgentArtifact, type AgentReleasesResponse } from "../../api/agent";
+
+const { Text } = Typography;
 
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [openKeys, setOpenKeys] = useState<string[]>([]);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [releases, setReleases] = useState<AgentReleasesResponse | null>(null);
 
   const currentUser = getCurrentUser();
   const companyName = currentUser?.company?.name || "XTTEN";
@@ -194,6 +200,24 @@ export default function Sidebar() {
     navigate(key);
   }
 
+  async function openDownloadPanel() {
+    setDownloadOpen(true);
+    if (releases || downloadLoading) return;
+
+    setDownloadLoading(true);
+    try {
+      const res = await getAgentReleases();
+      setReleases(res.data || null);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || "Failed to load agent download info");
+    } finally {
+      setDownloadLoading(false);
+    }
+  }
+
+  const windowsArtifacts = releases?.platforms?.windows?.artifacts || [];
+  const firstAvailableWindows = windowsArtifacts.find((item: AgentArtifact) => item.available);
+
   return (
     <div
       className="xtten-sidebar"
@@ -256,41 +280,81 @@ export default function Sidebar() {
         />
       </div>
 
-      {/* Agent Download Center - Fixed at bottom */}
-      {currentUser && hasPermission("system:admin") && (
+      {/* APP DOWNLOAD - fixed left bottom */}
+      {currentUser && (
         <div
           style={{
             borderTop: "1px solid rgba(255,255,255,0.1)",
             paddingTop: 12,
             paddingBottom: 4,
           }}
-          onClick={() => handleMenuClick("/agent/download")}
         >
-          <div
+          <Button
+            block
+            icon={<DownloadOutlined />}
+            onClick={() => void openDownloadPanel()}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 12px",
-              borderRadius: 4,
-              cursor: "pointer",
-              color: pathname === "/agent/download" ? "#1890ff" : "rgba(255,255,255,0.65)",
-              transition: "all 0.3s",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.08)";
-              (e.currentTarget as HTMLDivElement).style.color = "#1890ff";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLDivElement).style.background = "transparent";
-              (e.currentTarget as HTMLDivElement).style.color = pathname === "/agent/download" ? "#1890ff" : "rgba(255,255,255,0.65)";
+              height: 40,
+              borderRadius: 10,
+              background: "rgba(255,255,255,0.08)",
+              color: "#F8FAFF",
+              borderColor: "rgba(255,255,255,0.18)",
+              fontWeight: 700,
+              letterSpacing: 0.4,
             }}
           >
-            <DownloadOutlined style={{ fontSize: 16 }} />
-            <span style={{ fontSize: 14 }}>Agent Download Center</span>
-          </div>
+            APP DOWNLOAD
+          </Button>
         </div>
       )}
+
+      <Modal
+        title="APP DOWNLOAD"
+        open={downloadOpen}
+        onCancel={() => setDownloadOpen(false)}
+        footer={null}
+      >
+        <Space direction="vertical" style={{ width: "100%" }} size={12}>
+          <div>
+            <Text strong>Current Version: </Text>
+            <Tag color="blue">{releases?.version || "Not available"}</Tag>
+          </div>
+
+          <Divider style={{ margin: "4px 0" }} />
+
+          <div>
+            <Text strong>Windows Agent</Text>
+            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {downloadLoading ? (
+                <Tag>Loading...</Tag>
+              ) : windowsArtifacts.length === 0 ? (
+                <Tag color="gold">Coming Soon</Tag>
+              ) : (
+                windowsArtifacts.map((artifact: AgentArtifact) => (
+                  <Button
+                    key={`win-${artifact.format}`}
+                    type={artifact.available ? "primary" : "default"}
+                    disabled={!artifact.available}
+                    onClick={() => {
+                      if (!artifact.available) return;
+                      openAgentDownload("windows", artifact.format);
+                    }}
+                  >
+                    {artifact.available
+                      ? `Download ${artifact.format.toUpperCase()}`
+                      : `${artifact.format.toUpperCase()} Not available`}
+                  </Button>
+                ))
+              )}
+            </div>
+            {!downloadLoading && !firstAvailableWindows && (
+              <div style={{ marginTop: 8 }}>
+                <Text type="secondary">Coming Soon / Not available</Text>
+              </div>
+            )}
+          </div>
+        </Space>
+      </Modal>
     </div>
   );
 }
