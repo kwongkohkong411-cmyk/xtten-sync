@@ -30,7 +30,8 @@ const SYSTEM_ROLE_NAMES = new Set([
 export default function Roles() {
   const [roles, setRoles] = useState<any[]>([]);
   const [permissions, setPermissions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<any>(null);
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<string[]>([]);
@@ -39,6 +40,7 @@ export default function Roles() {
 
   const loadRoles = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await getRoles();
       const allRoles = res.data || [];
@@ -47,6 +49,12 @@ export default function Roles() {
           ? allRoles
           : allRoles.filter((role: any) => role?.name !== "SUPER_ADMIN"),
       );
+      setError(null);
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to load roles';
+      setError(errorMsg);
+      setRoles([]);
+      message.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -74,6 +82,11 @@ export default function Roles() {
   };
 
   const openEdit = (record: any) => {
+    // Prevent editing system roles
+    if (isProtectedSystemRole(record)) {
+      message.error("System roles cannot be edited");
+      return;
+    }
     setEditingRole(record);
     form.setFieldsValue(record);
     setSelectedPermissionIds(record.permissions?.map((item: any) => item.permission.id) || []);
@@ -82,21 +95,32 @@ export default function Roles() {
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    
+    // Prevent creating roles with system role names
+    if (!editingRole && SYSTEM_ROLE_NAMES.has(values.name)) {
+      message.error(`"${values.name}" is a reserved system role name`);
+      return;
+    }
+
     const payload = {
       ...values,
       permissionIds: selectedPermissionIds,
     };
 
-    if (editingRole) {
-      await updateRole(editingRole.id, payload);
-      message.success("Role updated");
-    } else {
-      await createRole(payload);
-      message.success("Role created");
-    }
+    try {
+      if (editingRole) {
+        await updateRole(editingRole.id, payload);
+        message.success("Role updated");
+      } else {
+        await createRole(payload);
+        message.success("Role created");
+      }
 
-    setModalOpen(false);
-    loadRoles();
+      setModalOpen(false);
+      loadRoles();
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || 'Failed to save role');
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -167,11 +191,19 @@ export default function Roles() {
         </Button>
       }
     >
+      {error && (
+        <div style={{ marginBottom: 16, padding: "12px", backgroundColor: "#fff2f0", color: "#d9534f", borderRadius: "4px" }}>
+          <strong>Error:</strong> {error}
+        </div>
+      )}
       <Table
         rowKey="id"
         columns={columns}
         dataSource={roles}
         loading={loading}
+        locale={{
+          emptyText: loading ? "Loading..." : error ? "Failed to load roles" : "No roles found",
+        }}
       />
 
       <Modal
@@ -180,6 +212,7 @@ export default function Roles() {
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
         okText="Save"
+        okButtonProps={{ disabled: editingRole && isProtectedSystemRole(editingRole) }}
       >
         <Form form={form} layout="vertical">
           <Form.Item
@@ -187,20 +220,35 @@ export default function Roles() {
             name="name"
             rules={[{ required: true, message: "Please enter role name" }]}
           >
-            <Input placeholder="e.g. HR_MANAGER" />
+            <Input 
+              placeholder="e.g. HR_MANAGER" 
+              disabled={editingRole && isProtectedSystemRole(editingRole)}
+              readOnly={editingRole && isProtectedSystemRole(editingRole)}
+            />
           </Form.Item>
 
           <Form.Item label="Description" name="description">
-            <Input.TextArea rows={3} placeholder="Role description" />
+            <Input.TextArea 
+              rows={3} 
+              placeholder="Role description"
+              disabled={editingRole && isProtectedSystemRole(editingRole)}
+              readOnly={editingRole && isProtectedSystemRole(editingRole)}
+            />
           </Form.Item>
 
           <Form.Item label="Permissions">
             <PermissionTree
               permissions={permissions}
               selectedIds={selectedPermissionIds}
-              onChange={setSelectedPermissionIds}
+              onChange={editingRole && isProtectedSystemRole(editingRole) ? undefined : setSelectedPermissionIds}
             />
           </Form.Item>
+
+          {editingRole && isProtectedSystemRole(editingRole) && (
+            <div style={{ padding: "8px 12px", backgroundColor: "#e8f5e9", color: "#2e7d32", borderRadius: "4px", marginTop: "8px" }}>
+              <strong>System Role:</strong> This is a system role and cannot be edited
+            </div>
+          )}
         </Form>
       </Modal>
     </Card>
