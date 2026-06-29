@@ -23,6 +23,8 @@ export default function Sidebar() {
   const [openKeys, setOpenKeys] = useState<string[]>([]);
 
   const currentUser = getCurrentUser();
+  const companyName = currentUser?.company?.name || "XTTEN";
+  const companyLogo = currentUser?.company?.logo || "";
 
   const items = [
     {
@@ -215,9 +217,30 @@ export default function Sidebar() {
           fontSize: 20,
           fontWeight: 800,
           marginBottom: 20,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
         }}
       >
-        XTTEN Sync
+        {companyLogo ? (
+          <img
+            src={companyLogo}
+            alt="company-logo"
+            style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover", border: "1px solid rgba(255,255,255,0.2)" }}
+          />
+        ) : (
+          <img
+            src="/favicon.svg"
+            alt="xtten-logo"
+            style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover", border: "1px solid rgba(255,255,255,0.2)" }}
+          />
+        )}
+        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+          <span style={{ fontSize: 16, fontWeight: 800 }}>XTTEN</span>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {companyName}
+          </span>
+        </div>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingBottom: 12 }}>

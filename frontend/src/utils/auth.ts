@@ -6,6 +6,11 @@ export interface CurrentUser {
   roleId?: string | null;
   permissions?: string[];
   companyId?: string | null;
+  company?: {
+    id: string;
+    name: string;
+    logo?: string | null;
+  } | null;
   employeeId?: string | null;
 }
 

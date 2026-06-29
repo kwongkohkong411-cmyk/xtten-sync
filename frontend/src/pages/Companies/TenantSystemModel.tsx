@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Avatar,
   Button,
   Card,
   Form,
@@ -10,8 +11,10 @@ import {
   Switch,
   Tabs,
   Typography,
+  Upload,
   message,
 } from "antd";
+import { UploadOutlined } from "@ant-design/icons";
 
 import { getCompanies, getCompanyById, updateCompany } from "../../api/company";
 import { getTenantConfig, upsertTenantConfig } from "../../api/tenantConfig";
@@ -34,6 +37,14 @@ export default function TenantSystemModel({ initialTab = "core" }: Props) {
 
   const [coreForm] = Form.useForm();
   const [runtimeForm] = Form.useForm();
+
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
 
   const canSaveAll = useMemo(() => !!selectedCompanyId, [selectedCompanyId]);
 
@@ -199,6 +210,43 @@ export default function TenantSystemModel({ initialTab = "core" }: Props) {
 
                     <Form.Item label="Logo URL" name="logo">
                       <Input placeholder="https://example.com/logo.png" />
+                    </Form.Item>
+
+                    <Form.Item label="Upload Logo">
+                      <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                        <Upload
+                          accept="image/*"
+                          showUploadList={false}
+                          beforeUpload={async (file) => {
+                            try {
+                              const dataUrl = await fileToDataUrl(file as File);
+                              coreForm.setFieldValue("logo", dataUrl);
+                              message.success("Logo loaded. Save Core Profile to persist.");
+                            } catch {
+                              message.error("Failed to read logo file");
+                            }
+                            return false;
+                          }}
+                        >
+                          <Button icon={<UploadOutlined />}>Select Logo Image</Button>
+                        </Upload>
+                        {coreForm.getFieldValue("logo") ? (
+                          <Space>
+                            <Avatar
+                              shape="square"
+                              size={52}
+                              src={coreForm.getFieldValue("logo")}
+                            />
+                            <Button
+                              onClick={() => {
+                                coreForm.setFieldValue("logo", null);
+                              }}
+                            >
+                              Clear Logo
+                            </Button>
+                          </Space>
+                        ) : null}
+                      </Space>
                     </Form.Item>
 
                     <Form.Item label="Timezone" name="timezone" rules={[{ required: true }]}>

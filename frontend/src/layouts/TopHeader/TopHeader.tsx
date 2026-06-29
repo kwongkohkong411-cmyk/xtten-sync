@@ -66,6 +66,7 @@ export default function TopHeader() {
   const currentUserRaw = localStorage.getItem("xtten_user");
   const currentCompanyId = localStorage.getItem("company_id") || "-";
   const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+  const currentCompanyName = currentUser?.company?.name || currentCompanyId;
   const beijingTime = new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
     year: "numeric",
@@ -121,7 +122,7 @@ export default function TopHeader() {
 
       {/* RIGHT */}
       <Space size={14}>
-        <Tag color="blue">Company: {currentUser?.companyId || currentCompanyId}</Tag>
+        <Tag color="blue">Company: {currentCompanyName}</Tag>
         <Tag color="geekblue" icon={<UserOutlined />}>{currentUser?.name || currentUser?.username || "-"}</Tag>
         <Tag icon={<ClockCircleOutlined />}>北京时间 {beijingTime}</Tag>
         <Button icon={<LogoutOutlined />} onClick={logout}>Logout</Button>

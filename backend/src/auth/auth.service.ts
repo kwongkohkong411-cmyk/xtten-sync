@@ -62,6 +62,13 @@ export class AuthService {
         OR: [{ email: dto.account }, { username: dto.account }],
       },
       include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            logo: true,
+          },
+        },
         roleRelation: {
           include: {
             permissions: {
@@ -126,6 +133,13 @@ export class AuthService {
           : undefined,
         permissions,
         companyId: user.companyId,
+        company: user.company
+          ? {
+              id: user.company.id,
+              name: user.company.name,
+              logo: user.company.logo,
+            }
+          : undefined,
         employeeId: employee?.id ?? null,
       },
     };

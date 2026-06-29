@@ -54,7 +54,7 @@ export default function Login() {
   return (
     <div className="login-page">
       <Card className="login-card">
-        <h1>XTTEN Sync</h1>
+        <h1>XTTEN</h1>
         <p>Employee Monitoring & SaaS System</p>
 
         <Form layout="vertical" onFinish={onFinish}>
