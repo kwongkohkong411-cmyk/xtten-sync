@@ -54,7 +54,7 @@ type ScheduleDecision = {
   lateThreshold: Date;
   scheduledStart: Date;
   scheduledEnd: Date | null;
-  source: 'ROSTER_DETAIL' | 'ROSTER_MONTH' | 'DEFAULT';
+  source: 'ROSTER_DETAIL' | 'MONTH_ROSTER' | 'DEFAULT';
   startTime: string;
   endTime: string | null;
   lateAfterMinutes: number;
@@ -319,7 +319,7 @@ export class AttendanceService {
           shift.endTime,
           Boolean(shift.crossDay),
         ),
-        source: 'ROSTER_MONTH',
+        source: 'MONTH_ROSTER',
         startTime: shift.startTime,
         endTime: shift.endTime,
         lateAfterMinutes: lateAfter,
