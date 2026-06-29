@@ -13,6 +13,7 @@ import {
   Space,
   Table,
   Tag,
+  TimePicker,
   Typography,
   message,
 } from 'antd';
@@ -80,10 +81,10 @@ function toCsvCell(value: unknown) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-export default function ActivityMonitoring({ view }: Props) {
+export default function ActivityMonitoring(_props: Props) {
   const [loading, setLoading] = useState(false);
   const [date, setDate] = useState(dayjs());
-  const [search, setSearch] = useState('');
+  const [searchEmployee, setSearchEmployee] = useState('');
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
   const [teamFilter, setTeamFilter] = useState<string>('all');
   const [payload, setPayload] = useState<any>(null);
@@ -95,13 +96,10 @@ export default function ActivityMonitoring({ view }: Props) {
   const [screenshotLoadingMore, setScreenshotLoadingMore] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortMode, setSortMode] = useState<string>('time_desc');
+  const [timeRange, setTimeRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-  const isScreenshotOnly = view === 'screenshots' || true;
-
   useEffect(() => {
-    if (!isScreenshotOnly) return;
-
     const run = async () => {
       setLoading(true);
       try {
@@ -121,11 +119,13 @@ export default function ActivityMonitoring({ view }: Props) {
     };
 
     void run();
-  }, [date.valueOf(), refreshTick, isScreenshotOnly]);
+  }, [date.valueOf(), refreshTick]);
 
   const screenshotRows = useMemo(() => {
     const items = Array.isArray(payload?.screenshots) ? payload.screenshots : [];
-    const keyword = search.trim().toLowerCase();
+    const keyword = searchEmployee.trim().toLowerCase();
+    const startTime = timeRange?.[0] ? timeRange[0].hour() * 60 + timeRange[0].minute() : null;
+    const endTime = timeRange?.[1] ? timeRange[1].hour() * 60 + timeRange[1].minute() : null;
 
     const normalized = items.map((row: any) => {
       const metadata = row?.metadata || {};
@@ -149,22 +149,28 @@ export default function ActivityMonitoring({ view }: Props) {
         status,
         previewSrc,
         minuteKey: dayjs(row?.capturedAt).format('YYYY-MM-DD HH:mm'),
+        minuteOfDay: dayjs(row?.capturedAt).hour() * 60 + dayjs(row?.capturedAt).minute(),
       };
     });
 
     let filtered = keyword
       ? normalized.filter((row: any) => {
           return [
-            row?.employeeId,
             row?.employeeName,
-            row?.departmentName,
-            row?.appName,
-            row?.website,
+            row?.employeeId,
           ]
             .map((v) => String(v || '').toLowerCase())
             .some((v) => v.includes(keyword));
         })
       : normalized;
+
+    if (startTime !== null) {
+      filtered = filtered.filter((row: any) => Number(row.minuteOfDay) >= startTime);
+    }
+
+    if (endTime !== null) {
+      filtered = filtered.filter((row: any) => Number(row.minuteOfDay) <= endTime);
+    }
 
     if (statusFilter !== 'all') {
       filtered = filtered.filter((row: any) => row.status === statusFilter);
@@ -186,7 +192,7 @@ export default function ActivityMonitoring({ view }: Props) {
     });
 
     return filtered;
-  }, [payload, search, date, statusFilter, teamFilter, employeeFilter, sortMode]);
+  }, [payload, searchEmployee, date, statusFilter, teamFilter, employeeFilter, sortMode, timeRange]);
 
   const teamOptions = useMemo(() => {
     const values = Array.from(new Set(screenshotRows.map((row: any) => String(row.departmentName || '').trim()).filter(Boolean))).sort();
@@ -360,7 +366,7 @@ export default function ActivityMonitoring({ view }: Props) {
     <div>
       <Card style={{ marginBottom: 16 }}>
         <Title level={3} style={{ marginBottom: 8 }}>Screenshot Wall</Title>
-        <Text type='secondary'>Live screenshot monitoring with team and employee level filtering.</Text>
+        <Text type='secondary'>Minute-by-minute screenshot wall with employee, date, time, and team filters.</Text>
       </Card>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
@@ -378,10 +384,16 @@ export default function ActivityMonitoring({ view }: Props) {
               <DatePicker value={date} onChange={(v) => setDate(v || dayjs())} />
               <Input.Search
                 allowClear
-                placeholder='Search screenshots'
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                placeholder='Search Employee'
+                value={searchEmployee}
+                onChange={(e) => setSearchEmployee(e.target.value)}
                 style={{ width: 220 }}
+              />
+              <TimePicker.RangePicker
+                value={timeRange}
+                format='HH:mm'
+                minuteStep={1}
+                onChange={(value) => setTimeRange(value)}
               />
               <Select value={teamFilter} style={{ width: 180 }} onChange={setTeamFilter} options={teamOptions} />
               <Select value={employeeFilter} style={{ width: 240 }} onChange={setEmployeeFilter} options={employeeOptions} />
@@ -415,7 +427,7 @@ export default function ActivityMonitoring({ view }: Props) {
                 Refresh
               </Button>
               <Button type='primary' icon={<DownloadOutlined />} onClick={exportCsv}>
-                Export CSV
+                Export Screenshot Records
               </Button>
             </Space>
           </Col>

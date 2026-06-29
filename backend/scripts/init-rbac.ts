@@ -25,8 +25,8 @@ async function main() {
     "leave:apply",
     "holiday:view",
     "holiday:manage",
-    "activity:view",
-    "activity:manage",
+    "screenshot:view",
+    "screenshot:export",
     "report:view",
     "report:export",
     "user:manage",
@@ -34,11 +34,11 @@ async function main() {
 
   const roleMap: Record<(typeof roles)[number], readonly string[]> = {
     SUPER_ADMIN: permissions,
-    COMPANY_ADMIN: ["user:manage", "shift:manage", "attendance:manage", "activity:manage", "leave:manage", "holiday:manage", "report:view", "report:export"],
-    HR: ["attendance:view", "leave:manage", "holiday:view", "report:view", "report:export", "activity:view"],
-    MANAGER: ["attendance:view", "activity:view", "report:view", "leave:view"],
-    TEAM_LEAD: ["attendance:view", "activity:view", "report:view"],
-    EMPLOYEE: ["attendance:view", "activity:view", "leave:view", "leave:apply"],
+    COMPANY_ADMIN: ["user:manage", "shift:manage", "attendance:manage", "screenshot:view", "screenshot:export", "leave:manage", "holiday:manage", "report:view", "report:export"],
+    HR: ["attendance:view", "leave:manage", "holiday:view", "report:view", "report:export"],
+    MANAGER: ["attendance:view", "report:view", "leave:view"],
+    TEAM_LEAD: ["attendance:view", "screenshot:view", "screenshot:export", "report:view"],
+    EMPLOYEE: ["attendance:view", "leave:view", "leave:apply"],
     AUDITOR: ["report:view", "attendance:view"],
   };
 

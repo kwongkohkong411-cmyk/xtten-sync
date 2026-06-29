@@ -33,7 +33,7 @@ import ControlPlaneDashboard from "../pages/ControlPlane/ControlPlaneDashboard";
 import BillingPage from "../pages/Billing/BillingPage";
 import SystemPage from "../pages/System/SystemPage";
 
-export type NavAudience = "all" | "companyAdmin" | "superAdmin";
+export type NavAudience = "all" | "companyAdmin" | "superAdmin" | "screenshotWall";
 
 type AppRoute = {
   path: string;
@@ -246,12 +246,14 @@ const APP_SHELL_SECTIONS: AppSection[] = [
     key: "screenshot-wall",
     label: "SCREENSHOT WALL",
     icon: <FundViewOutlined />,
-    required: "activity:view",
+    required: "screenshot:view",
+    audience: "screenshotWall",
     route: {
       path: "/activity/screenshots",
       label: "Screenshot Wall",
-      required: "activity:view",
-      element: <ActivityMonitoring view="screenshots" />,
+      required: "screenshot:view",
+      audience: "screenshotWall",
+      element: <ActivityMonitoring />,
     },
   },
   {
@@ -334,11 +336,18 @@ function isCompanyAdmin(user: CurrentUser | null): boolean {
   return (user?.role || "").toUpperCase() === "COMPANY_ADMIN";
 }
 
+function isTeamLead(user: CurrentUser | null): boolean {
+  return (user?.role || "").toUpperCase() === "TEAM_LEAD";
+}
+
 export function canAccessAudience(user: CurrentUser | null, audience: NavAudience = "all"): boolean {
   if (audience === "all") return true;
   if (!user) return false;
   if (audience === "superAdmin") return isSuperAdminOwner(user);
   if (audience === "companyAdmin") return isCompanyAdmin(user) && !isSuperAdminOwner(user);
+  if (audience === "screenshotWall") {
+    return isSuperAdminOwner(user) || isCompanyAdmin(user) || isTeamLead(user);
+  }
   return false;
 }
 

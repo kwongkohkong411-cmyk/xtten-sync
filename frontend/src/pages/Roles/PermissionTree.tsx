@@ -62,8 +62,8 @@ const GROUPS: PermissionGroup[] = [
     groupKey: "activity",
     title: "Screenshot Wall",
     children: [
-      { key: "activity:view", label: "View Screenshot Monitoring" },
-      { key: "activity:manage", label: "Manage Screenshot Monitoring" },
+      { key: "screenshot:view", label: "View Screenshot Wall" },
+      { key: "screenshot:export", label: "Export Screenshot Records" },
     ],
   },
   {

@@ -162,6 +162,10 @@ export class ActivityService
       throw new ForbiddenException('No company scope in user context');
     }
 
+    if (context.roleName === 'EMPLOYEE') {
+      throw new ForbiddenException('Employees cannot access screenshot wall');
+    }
+
     const selfEmployee = await this.prisma.employee.findFirst({
       where: {
         userId: context.userId,
@@ -172,9 +176,7 @@ export class ActivityService
 
     let visibleEmployeeIds: string[] | null = null;
 
-    if (context.roleName === 'EMPLOYEE') {
-      visibleEmployeeIds = selfEmployee?.id ? [selfEmployee.id] : [];
-    } else if (context.roleName === 'TEAM_LEAD') {
+    if (context.roleName === 'TEAM_LEAD') {
       const teamEmployees = await this.prisma.employee.findMany({
         where: {
           companyId,

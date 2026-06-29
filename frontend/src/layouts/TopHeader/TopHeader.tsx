@@ -38,6 +38,10 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
     title: "Attendance",
     subtitle: "Work Hours Report",
   },
+  "/attendance/work-hours": {
+    title: "Attendance",
+    subtitle: "Work Hours Report",
+  },
   "/attendance/summary": {
     title: "Attendance",
     subtitle: "Attendance Summary",
@@ -84,7 +88,11 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
   },
   "/activity": {
     title: "Screenshot Wall",
-    subtitle: "Screenshot Monitoring",
+    subtitle: "Screenshot Wall",
+  },
+  "/activity/screenshots": {
+    title: "Screenshot Wall",
+    subtitle: "Screenshot Wall",
   },
   "/reports": {
     title: "Reports",

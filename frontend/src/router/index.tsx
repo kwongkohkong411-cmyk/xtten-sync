@@ -302,8 +302,17 @@ export default function Router() {
           <Route
             path="/activity"
             element={
-              <AccessRoute permission="activity:view">
-                <ActivityMonitoring view="screenshots" />
+              <AccessRoute permission="screenshot:view" audience="screenshotWall">
+                <Navigate to="/activity/screenshots" replace />
+              </AccessRoute>
+            }
+          />
+
+          <Route
+            path="/activity/screenshots"
+            element={
+              <AccessRoute permission="screenshot:view" audience="screenshotWall">
+                <ActivityMonitoring />
               </AccessRoute>
             }
           />

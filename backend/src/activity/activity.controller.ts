@@ -41,7 +41,7 @@ export class ActivityController {
     private readonly activitySessionService: ActivitySessionService,
   ) {}
 
-  @RequirePermission('activity:view')
+  @RequirePermission('screenshot:view')
   @Get('sessions')
   getDailySessions(
     @Req() req: RequestWithUser,
@@ -56,7 +56,7 @@ export class ActivityController {
     });
   }
 
-  @RequirePermission('activity:view')
+  @RequirePermission('screenshot:view')
   @Get('productivity')
   getProductivitySummary(
     @Req() req: RequestWithUser,
@@ -71,13 +71,13 @@ export class ActivityController {
     });
   }
 
-  @RequirePermission('activity:view')
+  @RequirePermission('screenshot:view')
   @Get('categories')
   getActivityCategories() {
     return this.activitySessionService.getCategoryMap();
   }
 
-  @RequirePermission('activity:view')
+  @RequirePermission('screenshot:view')
   @Sse('stream')
   streamTimeline(
     @Req() req: RequestWithUser,
@@ -86,7 +86,7 @@ export class ActivityController {
     return this.activitySessionService.streamTimeline(req.user, { companyId });
   }
 
-  @RequirePermission('activity:view')
+  @RequirePermission('screenshot:view')
   @Get('live')
   getLiveActivity(
     @Req() req: RequestWithUser,
@@ -101,7 +101,7 @@ export class ActivityController {
     });
   }
 
-  @RequirePermission('activity:view')
+  @RequirePermission('screenshot:view')
   @Get('app-usage')
   getAppUsage(
     @Req() req: RequestWithUser,
@@ -111,7 +111,7 @@ export class ActivityController {
     return this.activityService.getAppUsage(req.user, { date, companyId });
   }
 
-  @RequirePermission('activity:view')
+  @RequirePermission('screenshot:view')
   @Get('website-tracking')
   getWebsiteTracking(
     @Req() req: RequestWithUser,
@@ -124,7 +124,7 @@ export class ActivityController {
     });
   }
 
-  @RequirePermission('activity:view')
+  @RequirePermission('screenshot:view')
   @Get('screenshots')
   getScreenshots(
     @Req() req: RequestWithUser,
@@ -141,7 +141,7 @@ export class ActivityController {
     });
   }
 
-  @RequirePermission('activity:view')
+  @RequirePermission('screenshot:view')
   @Get('input-stats')
   getInputStats(
     @Req() req: RequestWithUser,
