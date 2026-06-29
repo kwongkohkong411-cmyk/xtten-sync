@@ -37,6 +37,7 @@ type EmployeeStatusRow = {
   companyId: string;
   username: string;
   name: string;
+  teamName: string;
   workDate: string;
   status: AttendanceStatus;
   isHoliday: boolean;
@@ -622,6 +623,11 @@ export class ReportsService extends BaseRbacService {
         id: true,
         companyId: true,
         name: true,
+        workGroup: {
+          select: {
+            name: true,
+          },
+        },
         company: {
           select: {
             country: true,
@@ -768,6 +774,7 @@ export class ReportsService extends BaseRbacService {
         companyId: row.companyId,
         username: row.username,
         name: row.name,
+          teamName: row.teamName,
         status: row.status,
         isHoliday: row.isHoliday,
         workDate: row.workDate,
@@ -1053,6 +1060,7 @@ export class ReportsService extends BaseRbacService {
         employeeId: row.employeeId,
         username: row.username,
         name: row.name,
+        teamName: row.teamName,
         totalDays: 0,
         onTime: 0,
         late: 0,
@@ -1205,6 +1213,7 @@ export class ReportsService extends BaseRbacService {
           companyId: employee.companyId,
           username: employee.user?.username || '',
           name: employee.name,
+          teamName: employee.workGroup?.name || '-',
           workDate,
           status,
           isHoliday,

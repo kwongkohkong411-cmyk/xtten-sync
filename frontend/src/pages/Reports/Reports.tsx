@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, Col, DatePicker, Row, Space, Table, Tabs, Tag, Typography, message } from 'antd';
+import { Button, Card, Col, DatePicker, Row, Select, Space, Table, Tabs, Tag, Typography, message } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   downloadDayReport,
@@ -13,6 +13,24 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 type ReportTabKey = 'daily' | 'monthly' | 'summary';
+
+type SummaryStatusFilter = 'ON_TIME' | 'LATE' | 'LEAVE' | 'HOLIDAY' | 'ABSENT' | 'MISSING';
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function toCsvCell(value: unknown) {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""')}"`;
+}
 
 function statusColor(status: string) {
   if (status === 'ON_TIME') return 'green';
@@ -37,6 +55,9 @@ export default function Reports() {
   const [dailyData, setDailyData] = useState<any>(null);
   const [monthlyData, setMonthlyData] = useState<any>(null);
   const [summaryData, setSummaryData] = useState<any>(null);
+  const [summaryTeam, setSummaryTeam] = useState<string | undefined>(undefined);
+  const [summaryEmployee, setSummaryEmployee] = useState<string | undefined>(undefined);
+  const [summaryStatus, setSummaryStatus] = useState<SummaryStatusFilter | undefined>(undefined);
 
   const loadDaily = useCallback(async () => {
     setLoading(true);
@@ -97,16 +118,12 @@ export default function Reports() {
       if (tab === 'daily') {
         const blob = await downloadDayReport({
           date: dailyDate.format('YYYY-MM-DD'),
-          format: 'xlsx',
+          format: 'csv',
         });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `daily-report-${dailyDate.format('YYYY-MM-DD')}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
+        downloadBlob(
+          blob,
+          `XTTEN_Report_Daily_${dailyDate.format('YYYY-MM-DD')}.csv`,
+        );
         message.success('Daily report exported');
         return;
       }
@@ -114,21 +131,73 @@ export default function Reports() {
       if (tab === 'monthly') {
         const blob = await downloadMonthReport({
           month: monthDate.format('YYYY-MM'),
-          format: 'xlsx',
+          format: 'csv',
         });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `monthly-report-${monthDate.format('YYYY-MM')}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
+        downloadBlob(
+          blob,
+          `XTTEN_Report_Monthly_${monthDate.format('YYYY-MM')}.csv`,
+        );
         message.success('Monthly report exported');
         return;
       }
 
-      message.info('Summary export will be added in next iteration');
+      const rows = filteredSummaryRows;
+      const headers = [
+        'Team',
+        'Employee',
+        'Username',
+        'Total Days',
+        'Present',
+        'On Time',
+        'Late',
+        'Leave',
+        'Holiday',
+        'Absent',
+        'Missing',
+        'Attendance %',
+        'Work Hours',
+        'OT Hours',
+      ];
+      const csvLines = [
+        headers.map((h) => toCsvCell(h)).join(','),
+        ...rows.map((row: any) =>
+          [
+            row.teamName || '-',
+            row.name || '-',
+            row.username || '-',
+            row.totalDays,
+            row.present,
+            row.onTime,
+            row.late,
+            row.leave,
+            row.holiday,
+            row.absent,
+            row.missing,
+            row.attendanceRate,
+            row.totalHoursDecimal,
+            row.otHoursDecimal,
+          ]
+            .map((value) => toCsvCell(value))
+            .join(','),
+        ),
+      ];
+
+      const summaryFilterParts: string[] = [];
+      if (summaryTeam) summaryFilterParts.push(`Team-${summaryTeam}`);
+      if (summaryEmployee) summaryFilterParts.push(`Employee-${summaryEmployee}`);
+      if (summaryStatus) summaryFilterParts.push(`Status-${summaryStatus}`);
+      const filterLabel = summaryFilterParts.length
+        ? summaryFilterParts.join('_').replace(/\s+/g, '-')
+        : 'All';
+
+      const blob = new Blob([`\uFEFF${csvLines.join('\n')}`], {
+        type: 'text/csv;charset=utf-8;',
+      });
+      downloadBlob(
+        blob,
+        `XTTEN_Report_Summary_${summaryRange[0].format('YYYY-MM-DD')}_to_${summaryRange[1].format('YYYY-MM-DD')}_${filterLabel}.csv`,
+      );
+      message.success('Summary report exported');
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Export failed');
     }
@@ -158,17 +227,66 @@ export default function Reports() {
     };
   }, [monthlyData]);
 
-  const summaryMetrics = useMemo(() => {
-    const status = summaryData?.statusTotals || {};
-    return {
-      totalEmployees: Number(summaryData?.totalEmployees || 0),
-      attendanceRate: Number(summaryData?.attendanceRate || 0),
-      onTime: Number(status.onTime || 0),
-      late: Number(status.late || 0),
-      leave: Number(status.leave || 0),
-      absent: Number(status.absent || 0) + Number(status.missing || 0),
-    };
+  const filteredSummaryRows = useMemo(() => {
+    const rows = Array.isArray(summaryData?.rows) ? summaryData.rows : [];
+    return rows.filter((row: any) => {
+      if (summaryTeam && row.teamName !== summaryTeam) return false;
+      if (summaryEmployee && row.employeeId !== summaryEmployee) return false;
+      if (summaryStatus) {
+        if (summaryStatus === 'ON_TIME' && Number(row.onTime || 0) <= 0) return false;
+        if (summaryStatus === 'LATE' && Number(row.late || 0) <= 0) return false;
+        if (summaryStatus === 'LEAVE' && Number(row.leave || 0) <= 0) return false;
+        if (summaryStatus === 'HOLIDAY' && Number(row.holiday || 0) <= 0) return false;
+        if (summaryStatus === 'ABSENT' && Number(row.absent || 0) <= 0) return false;
+        if (summaryStatus === 'MISSING' && Number(row.missing || 0) <= 0) return false;
+      }
+      return true;
+    });
+  }, [summaryData, summaryEmployee, summaryStatus, summaryTeam]);
+
+  const summaryTeamOptions = useMemo(() => {
+    const rows = Array.isArray(summaryData?.rows) ? summaryData.rows : [];
+    const uniq = new Set<string>();
+    for (const row of rows) {
+      if (row?.teamName && row.teamName !== '-') uniq.add(row.teamName);
+    }
+    return Array.from(uniq).sort().map((teamName) => ({ label: teamName, value: teamName }));
   }, [summaryData]);
+
+  const summaryEmployeeOptions = useMemo(() => {
+    const rows = Array.isArray(summaryData?.rows) ? summaryData.rows : [];
+    return rows.map((row: any) => ({
+      label: row?.name || row?.username || row?.employeeId,
+      value: row?.employeeId,
+    }));
+  }, [summaryData]);
+
+  const summaryMetrics = useMemo(() => {
+    const rows = filteredSummaryRows;
+    const totals = rows.reduce(
+      (acc: any, row: any) => {
+        acc.totalDays += Number(row.totalDays || 0);
+        acc.onTime += Number(row.onTime || 0);
+        acc.late += Number(row.late || 0);
+        acc.leave += Number(row.leave || 0);
+        acc.absent += Number(row.absent || 0);
+        acc.missing += Number(row.missing || 0);
+        return acc;
+      },
+      { totalDays: 0, onTime: 0, late: 0, leave: 0, absent: 0, missing: 0 },
+    );
+    const present = totals.onTime + totals.late;
+    return {
+      totalEmployees: rows.length,
+      attendanceRate: totals.totalDays
+        ? Number(((present / totals.totalDays) * 100).toFixed(2))
+        : 0,
+      onTime: totals.onTime,
+      late: totals.late,
+      leave: totals.leave,
+      absent: totals.absent + totals.missing,
+    };
+  }, [filteredSummaryRows]);
 
   return (
     <Space direction='vertical' size={16} style={{ width: '100%' }}>
@@ -206,6 +324,42 @@ export default function Reports() {
                 }
               }}
             />
+          )}
+
+          {tab === 'summary' && (
+            <>
+              <Select
+                allowClear
+                placeholder='Team'
+                style={{ width: 180 }}
+                value={summaryTeam}
+                onChange={setSummaryTeam}
+                options={summaryTeamOptions}
+              />
+              <Select
+                allowClear
+                placeholder='Employee'
+                style={{ width: 220 }}
+                value={summaryEmployee}
+                onChange={setSummaryEmployee}
+                options={summaryEmployeeOptions}
+              />
+              <Select
+                allowClear
+                placeholder='Status'
+                style={{ width: 180 }}
+                value={summaryStatus}
+                onChange={(value) => setSummaryStatus(value as SummaryStatusFilter | undefined)}
+                options={[
+                  { label: 'ON_TIME', value: 'ON_TIME' },
+                  { label: 'LATE', value: 'LATE' },
+                  { label: 'LEAVE', value: 'LEAVE' },
+                  { label: 'HOLIDAY', value: 'HOLIDAY' },
+                  { label: 'ABSENT', value: 'ABSENT' },
+                  { label: 'MISSING', value: 'MISSING' },
+                ]}
+              />
+            </>
           )}
 
           <Button type='primary' onClick={exportCurrent}>
@@ -321,8 +475,9 @@ export default function Reports() {
               rowKey='employeeId'
               loading={loading}
               pagination={{ pageSize: 10 }}
-              dataSource={Array.isArray(summaryData?.rows) ? summaryData.rows : []}
+              dataSource={filteredSummaryRows}
               columns={[
+                { title: 'Team', dataIndex: 'teamName' },
                 { title: 'Employee', dataIndex: 'name' },
                 { title: 'Username', dataIndex: 'username' },
                 { title: 'Total Days', dataIndex: 'totalDays' },
