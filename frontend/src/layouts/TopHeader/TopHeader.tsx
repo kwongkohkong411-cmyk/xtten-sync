@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Typography, Space, Avatar, Button, Tag, message } from "antd";
-import { UserOutlined, LogoutOutlined, ClockCircleOutlined } from "@ant-design/icons";
+import { Typography, Space, Avatar, Button, Dropdown, Tag, message } from "antd";
+import { UserOutlined, LogoutOutlined, DownOutlined, BankOutlined } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const { Title, Text } = Typography;
@@ -20,27 +20,27 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
   },
   "/attendance": {
     title: "Attendance",
-    subtitle: "打卡考勤",
+    subtitle: "Clock In and Attendance",
   },
   "/shift": {
     title: "Shift",
-    subtitle: "班次管理",
+    subtitle: "Shift Management",
   },
   "/leave-requests": {
     title: "Leave",
-    subtitle: "请假审批",
+    subtitle: "Leave Management",
   },
   "/holiday-settings": {
     title: "Holiday Settings",
     subtitle: "国家/公司假期规则",
   },
   "/activity": {
-    title: "Activity Monitoring",
-    subtitle: "实时行为监控",
+    title: "Screenshot Wall",
+    subtitle: "Screenshot Monitoring",
   },
   "/reports": {
     title: "Reports",
-    subtitle: "日报/周报/月报",
+    subtitle: "Daily / Weekly / Monthly Reports",
   },
   "/roles": {
     title: "Users / Roles",
@@ -64,19 +64,11 @@ export default function TopHeader() {
   }, [location.pathname]);
 
   const currentUserRaw = localStorage.getItem("xtten_user");
-  const currentCompanyId = localStorage.getItem("company_id") || "-";
+  const currentCompanyId = localStorage.getItem("company_id") || "";
   const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
-  const currentCompanyName = currentUser?.company?.name || currentCompanyId;
-  const beijingTime = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(now);
+  const currentCompanyName = currentUser?.company?.name || "No Company Selected";
+  const timezoneLabel = "UTC+08:00";
+  const userName = currentUser?.name || currentUser?.username || "-";
 
   // =========================
   // LOGOUT FUNCTION
@@ -93,6 +85,15 @@ export default function TopHeader() {
     // 强制跳转登录页
     navigate("/");
   };
+
+  const userMenu = [
+    {
+      key: "logout",
+      icon: <LogoutOutlined />,
+      label: "Logout",
+      onClick: logout,
+    },
+  ];
 
   return (
     <div
@@ -122,10 +123,13 @@ export default function TopHeader() {
 
       {/* RIGHT */}
       <Space size={14}>
-        <Tag color="blue">Company: {currentCompanyName}</Tag>
-        <Tag color="geekblue" icon={<UserOutlined />}>{currentUser?.name || currentUser?.username || "-"}</Tag>
-        <Tag icon={<ClockCircleOutlined />}>北京时间 {beijingTime}</Tag>
-        <Button icon={<LogoutOutlined />} onClick={logout}>Logout</Button>
+        <Tag color="blue" icon={<BankOutlined />}>{currentCompanyName}</Tag>
+        <Tag>{timezoneLabel}</Tag>
+        <Dropdown menu={{ items: userMenu }} trigger={["click"]}>
+          <Button icon={<UserOutlined />}>
+            {userName} <DownOutlined />
+          </Button>
+        </Dropdown>
       </Space>
     </div>
   );

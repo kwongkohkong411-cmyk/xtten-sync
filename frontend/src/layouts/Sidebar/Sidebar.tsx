@@ -78,7 +78,7 @@ export default function Sidebar() {
     {
       key: "attendance",
       icon: <ClockCircleOutlined />,
-      label: "Attendance 打卡考勤",
+      label: "Attendance",
       required: "attendance:view",
       children: [
         { key: "/attendance/records", label: "Clock In/Out Records", required: "attendance:view" },
@@ -89,7 +89,7 @@ export default function Sidebar() {
     {
       key: "shift",
       icon: <CalendarOutlined />,
-      label: "Shift 班次管理",
+      label: "Shift",
       required: "shift:view",
       children: [
         { key: "/shift", label: "Shift Overview", required: "shift:view" },
@@ -101,7 +101,7 @@ export default function Sidebar() {
     {
       key: "leave",
       icon: <AuditOutlined />,
-      label: "Leave 请假审批",
+      label: "Leave",
       required: "leave:view",
       children: [
         { key: "/leave-requests", label: "Leave Requests", required: "leave:view" },
@@ -132,7 +132,7 @@ export default function Sidebar() {
     {
       key: "roles_permissions",
       icon: <SafetyCertificateOutlined />,
-      label: "Users / Roles 管理",
+      label: "Users & Roles",
       required: "roles:view",
       children: [
         { key: "/users", label: "Users", required: "users:view" },
