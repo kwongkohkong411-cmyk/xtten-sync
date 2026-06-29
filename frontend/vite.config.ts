@@ -3,7 +3,16 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "inject-build-timestamp",
+      transformIndexHtml(html) {
+        const buildTs = process.env.BUILD_TS || Date.now().toString();
+        return html.replace(/__BUILD_TS__/g, buildTs);
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
