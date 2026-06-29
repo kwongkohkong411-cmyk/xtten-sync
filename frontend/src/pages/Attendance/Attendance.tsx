@@ -550,10 +550,10 @@ export default function Attendance() {
         items={[
           {
             key: "self",
-            label: "Employee Self Check-in",
+            label: "Employee Attendance",
             children: (
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card title="Today's Check-in Actions">
+                <Card title="Today's Attendance Actions">
                   <Space wrap>
                     <Button
                       type="primary"
@@ -718,7 +718,7 @@ export default function Attendance() {
           },
           {
             key: "flow-test",
-            label: "End-to-End Validation",
+            label: "Attendance Scenario",
             children: (
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
                 <Card title="Night Shift Validation">
@@ -743,7 +743,7 @@ export default function Attendance() {
                   </Space>
                 </Card>
 
-                <Card title="Validation Results (Hours / Late / Early Leave / Break)">
+                <Card title="Attendance Results (Hours / Late / Early Leave / Break)">
                   {scenarioResult ? (
                     <Space direction="vertical" size={8}>
                       <Text>Employee: {scenarioResult.employeeName}</Text>

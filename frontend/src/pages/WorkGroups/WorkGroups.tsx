@@ -124,10 +124,10 @@ export default function WorkGroups() {
 
       if (editing) {
         await updateWorkGroup(editing.id, payload);
-        message.success("Work group updated");
+        message.success("Team updated");
       } else {
         await createWorkGroup(payload);
-        message.success("Work group created");
+        message.success("Team created");
       }
 
       setModalOpen(false);
@@ -140,10 +140,10 @@ export default function WorkGroups() {
   const handleDelete = async (id: string) => {
     try {
       await deleteWorkGroup(id);
-      message.success("Work group deleted");
+      message.success("Team deleted");
       fetchData();
     } catch (error) {
-      message.error("Failed to delete work group");
+      message.error("Failed to delete team");
     }
   };
 
@@ -201,7 +201,7 @@ export default function WorkGroups() {
           </Button>
 
           <Popconfirm
-            title="Delete this work group?"
+            title="Delete this team?"
             description="Employees in this group will be unassigned."
             okText="Delete"
             okButtonProps={{ danger: true }}
@@ -296,7 +296,7 @@ export default function WorkGroups() {
                     display: "inline-block",
                   }}
                 />
-                <Text strong>{groupName || "New Work Group"}</Text>
+                <Text strong>{groupName || "New Team"}</Text>
                 <Tag>{groupCode || "CODE"}</Tag>
               </Space>
             </Space>

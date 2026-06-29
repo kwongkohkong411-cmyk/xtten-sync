@@ -43,7 +43,7 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Daily / Weekly / Monthly Reports",
   },
   "/roles": {
-    title: "Users / Roles",
+    title: "Users & Roles",
     subtitle: "Access and Account Management",
   },
 };
