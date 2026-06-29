@@ -115,11 +115,9 @@ export default function Sidebar() {
     {
       key: "activity",
       icon: <FundViewOutlined />,
-      label: "Activity Monitoring 监控",
+      label: "Screenshot Wall",
       required: "activity:view",
       children: [
-        { key: "/activity/live", label: "Activity Live View", required: "activity:view" },
-        { key: "/activity/timeline", label: "Employee Timeline", required: "activity:view" },
         { key: "/activity/screenshots", label: "Screenshot Wall", required: "activity:view" },
       ],
     },

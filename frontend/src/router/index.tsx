@@ -337,23 +337,7 @@ export default function Router() {
             path="/activity"
             element={
               <PermissionRoute permission="activity:view">
-                <ActivityMonitoring />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/activity/live"
-            element={
-              <PermissionRoute permission="activity:view">
-                <ActivityMonitoring view="live" />
-              </PermissionRoute>
-            }
-          />
-          <Route
-            path="/activity/timeline"
-            element={
-              <PermissionRoute permission="activity:view">
-                <ActivityMonitoring view="timeline" />
+                <Navigate to="/activity/screenshots" replace />
               </PermissionRoute>
             }
           />
@@ -368,10 +352,18 @@ export default function Router() {
 
           {/* Backward compatibility for old activity routes */}
           <Route
+            path="/activity/live"
+            element={<Navigate to="/activity/screenshots" replace />}
+          />
+          <Route
+            path="/activity/timeline"
+            element={<Navigate to="/activity/screenshots" replace />}
+          />
+          <Route
             path="/activity/app-usage"
             element={
               <PermissionRoute permission="activity:view">
-                <ActivityMonitoring view="timeline" />
+                <Navigate to="/activity/screenshots" replace />
               </PermissionRoute>
             }
           />
@@ -379,7 +371,7 @@ export default function Router() {
             path="/activity/website-tracking"
             element={
               <PermissionRoute permission="activity:view">
-                <ActivityMonitoring view="live" />
+                <Navigate to="/activity/screenshots" replace />
               </PermissionRoute>
             }
           />
@@ -387,7 +379,7 @@ export default function Router() {
             path="/activity/input-stats"
             element={
               <PermissionRoute permission="activity:view">
-                <ActivityMonitoring view="timeline" />
+                <Navigate to="/activity/screenshots" replace />
               </PermissionRoute>
             }
           />
