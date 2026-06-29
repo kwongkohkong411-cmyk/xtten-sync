@@ -179,6 +179,23 @@ function renderStatusBadge(status: string, anomalyList: string[]) {
   return <Badge color="default" text={status || "-"} />;
 }
 
+function getStatusLabel(status: string, anomalyList: string[]) {
+  const source = `${status} ${anomalyList.join(" ")}`.toUpperCase();
+
+  if (source.includes("HOLIDAY")) return "Holiday";
+  if (source.includes("ABSENT")) return "Absent";
+  if (source.includes("EARLY_LEAVE")) return "Early Leave";
+  if (source.includes("LEAVE")) return "Leave";
+  if (source.includes("LATE")) return "Late";
+  if (source.includes("PRESENT")) return "Present";
+  return status || "-";
+}
+
+function toCsvCell(value: string) {
+  const escaped = value.replace(/"/g, '""');
+  return `"${escaped}"`;
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
   if (typeof error === "object" && error) {
     const typedError = error as ApiError;
@@ -413,6 +430,67 @@ export default function Attendance() {
     };
   }, [events, rosters, scenarioDate, scenarioEmployeeId]);
 
+  const handleExportCsv = useCallback(() => {
+    const headers = [
+      "Shift Date",
+      "Employee",
+      "Team",
+      "Shift",
+      "Scheduled Time",
+      "Actual Time",
+      "Work Hours",
+      "Status",
+      "Late",
+      "Early Leave",
+      "Anomaly",
+    ];
+
+    const lines = adminRows.map((row) => {
+      const scheduledTime = `${row.scheduledStartTime || "-"} → ${row.scheduledEndTime || "-"}`;
+      const actualTime = `${toTime(row.checkIn)} → ${toTime(row.checkOut)}`;
+      const workHours = toHourMinute(row.worked);
+      const status = getStatusLabel(row.status, row.anomalyList);
+      const late = row.lateMinutes > 0 ? `${row.lateMinutes} min (${row.lateHours.toFixed(2)} hr)` : "-";
+      const earlyLeave = row.earlyLeaveMinutes > 0
+        ? `${row.earlyLeaveMinutes} min (${row.earlyLeaveHours.toFixed(2)} hr)`
+        : "-";
+      const anomaly = (Array.isArray(row.anomalyList) && row.anomalyList.length
+        ? row.anomalyList
+        : typeof row.anomaly === "string" && row.anomaly !== "-"
+          ? row.anomaly.split(",").map((item) => item.trim()).filter(Boolean)
+          : []).join(" | ") || "-";
+
+      return [
+        row.shiftDate || "-",
+        row.employee || "-",
+        row.team || "-",
+        row.shift || "-",
+        scheduledTime,
+        actualTime,
+        workHours,
+        status,
+        late,
+        earlyLeave,
+        anomaly,
+      ];
+    });
+
+    const csvContent = [headers, ...lines]
+      .map((line) => line.map((cell) => toCsvCell(String(cell))).join(","))
+      .join("\n");
+
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `attendance_export_${dayjs().format("YYYYMMDD_HHmmss")}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    message.success(`CSV exported: ${adminRows.length} row(s)`);
+  }, [adminRows]);
+
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Card>
@@ -509,6 +587,7 @@ export default function Attendance() {
                   />
                   <Button onClick={() => setShiftDateFilter(resolveShiftDateToday())}>Today</Button>
                   <Button onClick={() => setShiftDateFilter(undefined)}>Clear / All</Button>
+                  <Button type="primary" onClick={handleExportCsv}>Export CSV</Button>
                   <Select
                     allowClear
                     style={{ width: 260 }}
