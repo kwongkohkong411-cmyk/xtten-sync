@@ -1,4 +1,4 @@
-import { Menu, Switch } from "antd";
+import { Menu } from "antd";
 import React, { useState, useEffect } from "react";
 import {
   DashboardOutlined,
@@ -20,27 +20,9 @@ import { hasPermission, getCurrentUser } from "../../utils/auth";
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const currentUser = getCurrentUser();
-  const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";
-
-  const [showAll, setShowAll] = useState<boolean>(false);
   const [openKeys, setOpenKeys] = useState<string[]>([]);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('xtten_show_all_sidebar');
-      setShowAll(raw === 'true');
-    } catch {
-      setShowAll(false);
-    }
-  }, []);
-
-  function toggleShowAll(checked: boolean) {
-    setShowAll(checked);
-    try {
-      localStorage.setItem('xtten_show_all_sidebar', String(checked));
-    } catch {}
-  }
+  const currentUser = getCurrentUser();
 
   const items = [
     {
@@ -79,10 +61,10 @@ export default function Sidebar() {
       key: "admin",
       icon: <CrownOutlined />,
       label: "Super Admin",
-      required: "organization:view",
+      required: "system:admin",
       children: [
-        { key: "/admin/system", label: "System Configuration", required: "organization:view" },
-        { key: "/admin/audit", label: "Audit Logs", required: "organization:view" },
+        { key: "/admin/system", label: "System Configuration", required: "system:admin" },
+        { key: "/admin/audit", label: "Audit Logs", required: "system:admin" },
       ],
     },
     {
@@ -158,9 +140,8 @@ export default function Sidebar() {
       // filter children
       if (item.children && item.children.length) {
         const visibleChildren = item.children.filter((child) => {
-          if (showAll) return true;
           if (child.required === null) return true;
-          return isSuperAdmin || hasPermission(child.required as string);
+          return hasPermission(child.required as string);
         });
 
         if (visibleChildren.length === 0) return null;
@@ -169,9 +150,8 @@ export default function Sidebar() {
       }
 
       // no children
-      if (showAll) return item;
       if (item.required === null) return item;
-      if (isSuperAdmin || hasPermission(item.required as string)) return item;
+      if (hasPermission(item.required as string)) return item;
       return null;
     })
     .filter(Boolean) as any[];
@@ -240,10 +220,6 @@ export default function Sidebar() {
       >
         XTTEN Sync
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Switch checked={showAll} onChange={toggleShowAll} size="small" />
-        <div style={{ color: '#fff', fontSize: 12 }}>Show all</div>
-      </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingBottom: 12 }}>
         <Menu
@@ -259,38 +235,40 @@ export default function Sidebar() {
       </div>
 
       {/* Agent Download Center - Fixed at bottom */}
-      <div
-        style={{
-          borderTop: "1px solid rgba(255,255,255,0.1)",
-          paddingTop: 12,
-          paddingBottom: 4,
-        }}
-        onClick={() => handleMenuClick("/agent/download")}
-      >
+      {currentUser && hasPermission("system:admin") && (
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 12px",
-            borderRadius: 4,
-            cursor: "pointer",
-            color: pathname === "/agent/download" ? "#1890ff" : "rgba(255,255,255,0.65)",
-            transition: "all 0.3s",
+            borderTop: "1px solid rgba(255,255,255,0.1)",
+            paddingTop: 12,
+            paddingBottom: 4,
           }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.08)";
-            (e.currentTarget as HTMLDivElement).style.color = "#1890ff";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLDivElement).style.background = "transparent";
-            (e.currentTarget as HTMLDivElement).style.color = pathname === "/agent/download" ? "#1890ff" : "rgba(255,255,255,0.65)";
-          }}
+          onClick={() => handleMenuClick("/agent/download")}
         >
-          <DownloadOutlined style={{ fontSize: 16 }} />
-          <span style={{ fontSize: 14 }}>Agent Download Center</span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 12px",
+              borderRadius: 4,
+              cursor: "pointer",
+              color: pathname === "/agent/download" ? "#1890ff" : "rgba(255,255,255,0.65)",
+              transition: "all 0.3s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.08)";
+              (e.currentTarget as HTMLDivElement).style.color = "#1890ff";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLDivElement).style.background = "transparent";
+              (e.currentTarget as HTMLDivElement).style.color = pathname === "/agent/download" ? "#1890ff" : "rgba(255,255,255,0.65)";
+            }}
+          >
+            <DownloadOutlined style={{ fontSize: 16 }} />
+            <span style={{ fontSize: 14 }}>Agent Download Center</span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

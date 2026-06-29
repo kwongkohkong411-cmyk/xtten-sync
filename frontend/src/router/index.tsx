@@ -51,19 +51,12 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 
 function PermissionRoute({ children, permission }: { children: ReactNode; permission?: string }) {
   const currentUser = getCurrentUser();
-  const devShowAll = localStorage.getItem("xtten_show_all_sidebar") === "true";
 
   if (!currentUser) {
     return <Navigate to="/" replace />;
   }
 
-  // Developer bypass: when sidebar Show all is enabled, allow opening target pages
-  // to configure features one by one before final RBAC rollout.
-  if (devShowAll) {
-    return children;
-  }
-
-  if (!permission || currentUser.role === "SUPER_ADMIN") {
+  if (!permission) {
     return children;
   }
 
@@ -110,7 +103,7 @@ export default function Router() {
           <Route
             path="/companies"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="organization:view">
                 <Companies />
               </PermissionRoute>
             }
@@ -118,7 +111,7 @@ export default function Router() {
           <Route
             path="/companies/:id"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="organization:view">
                 <CompanyDetail />
               </PermissionRoute>
             }
@@ -126,7 +119,7 @@ export default function Router() {
           <Route
             path="/companies/settings"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="organization:view">
                 <CompanySettings />
               </PermissionRoute>
             }
@@ -134,7 +127,7 @@ export default function Router() {
           <Route
             path="/companies/multi-tenant"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="organization:view">
                 <MultiTenantConfig />
               </PermissionRoute>
             }
@@ -142,7 +135,7 @@ export default function Router() {
           <Route
             path="/departments"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="teams:view">
                 <Departments />
               </PermissionRoute>
             }
@@ -150,7 +143,7 @@ export default function Router() {
           <Route
             path="/departments/members"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="teams:view">
                 <DepartmentMembers />
               </PermissionRoute>
             }
@@ -158,7 +151,7 @@ export default function Router() {
           <Route
             path="/employees"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="users:view">
                 <Employees />
               </PermissionRoute>
             }
@@ -166,7 +159,7 @@ export default function Router() {
           <Route
             path="/employees/add"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="users:create">
                 <Employees />
               </PermissionRoute>
             }
@@ -174,12 +167,19 @@ export default function Router() {
           <Route
             path="/employees/:id"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="users:view">
                 <EmployeeDetails />
               </PermissionRoute>
             }
           />
-          <Route path="/users" element={<Users />} />
+          <Route
+            path="/users"
+            element={
+              <PermissionRoute permission="users:view">
+                <Users />
+              </PermissionRoute>
+            }
+          />
           <Route
             path="/roles"
             element={
@@ -271,7 +271,7 @@ export default function Router() {
           <Route
             path="/permissions"
             element={
-              <PermissionRoute permission="user:manage">
+              <PermissionRoute permission="roles:view">
                 <Permissions />
               </PermissionRoute>
             }

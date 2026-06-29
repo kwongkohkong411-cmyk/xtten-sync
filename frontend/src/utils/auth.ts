@@ -30,7 +30,11 @@ export function isSuperAdminOwner(user?: CurrentUser | null): boolean {
 export function hasPermission(permission: string): boolean {
   const user = getCurrentUser();
   if (!user) return false;
-  if (user.role === 'SUPER_ADMIN') return true;
+
+  // Reserved entry for platform owner only.
+  if (permission === 'system:admin') {
+    return isSuperAdminOwner(user);
+  }
 
   const permissions = user.permissions || [];
   if (permissions.includes(permission)) return true;
