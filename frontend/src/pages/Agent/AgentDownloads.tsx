@@ -27,6 +27,23 @@ import {
 
 const { Title, Text, Paragraph } = Typography;
 
+const FALLBACK_RELEASES: AgentReleasesResponse = {
+  version: 'Not Available',
+  generatedAt: '',
+  platforms: {
+    windows: {
+      version: 'Not Available',
+      artifacts: [],
+      notes: ['Not Available'],
+    },
+    macos: {
+      version: 'Not Available',
+      artifacts: [],
+      notes: ['Not Available'],
+    },
+  },
+};
+
 function formatBytes(size: number | null) {
   if (!size || size <= 0) return 'Pending';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -70,7 +87,7 @@ export default function AgentDownloads() {
         const res = await getAgentReleases();
         setReleases(res.data);
       } catch (err: any) {
-        message.error(err?.response?.data?.message || 'Failed to load agent release info');
+        setReleases(FALLBACK_RELEASES);
       } finally {
         setLoading(false);
       }
@@ -81,6 +98,10 @@ export default function AgentDownloads() {
   const windowsArtifacts = useMemo(
     () => releases?.platforms?.windows?.artifacts || [],
     [releases],
+  );
+  const windowsExe = useMemo(
+    () => windowsArtifacts.find((artifact) => artifact.format === 'exe') || null,
+    [windowsArtifacts],
   );
   const macArtifacts = useMemo(
     () => releases?.platforms?.macos?.artifacts || [],
@@ -95,10 +116,10 @@ export default function AgentDownloads() {
           <Text type='secondary'>Distribute employee desktop agent installers by platform.</Text>
           <Descriptions column={2} size='small'>
             <Descriptions.Item label='Current Version'>
-              <Tag color='blue'>{releases?.version || 'N/A'}</Tag>
+              <Tag color='blue'>{releases?.version || 'Not Available'}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label='Last Refreshed'>
-              {releases?.generatedAt ? dayjs(releases.generatedAt).format('YYYY-MM-DD HH:mm:ss') : 'N/A'}
+              {releases?.generatedAt ? dayjs(releases.generatedAt).format('YYYY-MM-DD HH:mm:ss') : 'Not Available'}
             </Descriptions.Item>
           </Descriptions>
         </Space>
@@ -108,15 +129,19 @@ export default function AgentDownloads() {
         <Col xs={24} lg={12}>
           <Card title={<Space><WindowsOutlined />Windows Agent</Space>}>
             <Space direction='vertical' style={{ width: '100%' }}>
-              <Text>Version: {releases?.platforms?.windows?.version || '-'}</Text>
+              <Text>Version: {releases?.platforms?.windows?.version || 'Not Available'}</Text>
               <Space wrap>
-                {windowsArtifacts.map((artifact) => renderArtifactButton('windows', artifact))}
+                {windowsExe ? (
+                  renderArtifactButton('windows', windowsExe)
+                ) : (
+                  <Text type='secondary'>Not Available</Text>
+                )}
               </Space>
               <Divider style={{ margin: '10px 0' }} />
               <Paragraph style={{ marginBottom: 6 }}>
                 Install steps (Windows)
               </Paragraph>
-              <Text>1. Download EXE or MSI package.</Text>
+              <Text>1. Download EXE package.</Text>
               <Text>2. Install and open XTTEN Agent.</Text>
               <Text>3. Log in with employee account.</Text>
               <Text>4. Keep app running in tray for telemetry upload.</Text>
@@ -127,7 +152,7 @@ export default function AgentDownloads() {
         <Col xs={24} lg={12}>
           <Card title={<Space><LaptopOutlined />macOS Agent</Space>}>
             <Space direction='vertical' style={{ width: '100%' }}>
-              <Text>Version: {releases?.platforms?.macos?.version || 'coming-soon'}</Text>
+              <Text>Status: {releases?.platforms?.macos?.version || 'Not Available'}</Text>
               <Space wrap>
                 {macArtifacts.map((artifact) => renderArtifactButton('macos', artifact))}
               </Space>
