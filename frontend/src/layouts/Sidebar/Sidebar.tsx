@@ -148,9 +148,7 @@ export default function Sidebar() {
       children: [
         { key: "/users", label: "Users", required: "user:manage" },
         { key: "/roles", label: "Roles", required: "user:manage" },
-        { key: "/permissions", label: "Permissions", required: "user:manage" },
         { key: "/roles/assign", label: "Role Assignment", required: "user:manage" },
-        { key: "/agent/download", label: "Agent Download Center", icon: <DownloadOutlined />, required: "system:admin" },
       ],
     },
   ];
@@ -258,6 +256,40 @@ export default function Sidebar() {
           items={visibleItems}
           style={{ background: "transparent", border: "none" }}
         />
+      </div>
+
+      {/* Agent Download Center - Fixed at bottom */}
+      <div
+        style={{
+          borderTop: "1px solid rgba(255,255,255,0.1)",
+          paddingTop: 12,
+          paddingBottom: 4,
+        }}
+        onClick={() => handleMenuClick("/agent/download")}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 12px",
+            borderRadius: 4,
+            cursor: "pointer",
+            color: pathname === "/agent/download" ? "#1890ff" : "rgba(255,255,255,0.65)",
+            transition: "all 0.3s",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.08)";
+            (e.currentTarget as HTMLDivElement).style.color = "#1890ff";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLDivElement).style.background = "transparent";
+            (e.currentTarget as HTMLDivElement).style.color = pathname === "/agent/download" ? "#1890ff" : "rgba(255,255,255,0.65)";
+          }}
+        >
+          <DownloadOutlined style={{ fontSize: 16 }} />
+          <span style={{ fontSize: 14 }}>Agent Download Center</span>
+        </div>
       </div>
     </div>
   );
