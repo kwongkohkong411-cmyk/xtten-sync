@@ -91,8 +91,6 @@ export default function Leaves() {
 
   const [searchText, setSearchText] = useState('');
   const [rootTab, setRootTab] = useState<'requests' | 'settings'>('requests');
-  const [requestTab, setRequestTab] = useState<'apply' | 'all' | 'pending'>('all');
-  const [settingsTab, setSettingsTab] = useState<'types' | 'balances' | 'approvers'>('types');
 
   const [applyForm] = Form.useForm();
   const [typeForm] = Form.useForm();
@@ -207,7 +205,6 @@ export default function Leaves() {
 
       message.success('Leave request submitted');
       applyForm.resetFields();
-      setRequestTab('all');
       await loadLeaves();
     } catch (error: any) {
       if (error?.errorFields) return;
@@ -337,7 +334,6 @@ export default function Leaves() {
               type='primary'
               icon={<PlusOutlined />}
               onClick={() => {
-                setRequestTab('apply');
                 navigate('/leave-requests');
               }}
             >
@@ -368,80 +364,77 @@ export default function Leaves() {
             />
           </div>
 
-          <Card style={{ marginBottom: 16, borderRadius: 16 }}>
-            <Tabs
-              activeKey={requestTab}
-              onChange={(key) => setRequestTab(key as 'apply' | 'all' | 'pending')}
-              items={[
-                { key: 'apply', label: 'Apply Leave' },
-                { key: 'all', label: 'All Requests' },
-                { key: 'pending', label: 'Pending Approval' },
-              ]}
+          <Card title='Apply Leave' style={{ borderRadius: 16, marginBottom: 16 }}>
+            {!canApplyLeave ? (
+              <Empty description='No permission to apply leave' />
+            ) : (
+              <Form form={applyForm} layout='vertical' style={{ maxWidth: 520 }}>
+                <Form.Item
+                  label='Leave Type'
+                  name='type'
+                  rules={[{ required: true, message: 'Please choose leave type' }]}
+                >
+                  <Select
+                    placeholder='Select leave type'
+                    options={activeLeaveTypes.map((item) => ({ label: item.name, value: item.name }))}
+                  />
+                </Form.Item>
+
+                <Space align='start' style={{ width: '100%' }}>
+                  <Form.Item
+                    label='Start Date'
+                    name='startDate'
+                    rules={[{ required: true, message: 'Please choose start date' }]}
+                  >
+                    <DatePicker style={{ width: 220 }} />
+                  </Form.Item>
+
+                  <Form.Item
+                    label='End Date'
+                    name='endDate'
+                    rules={[{ required: true, message: 'Please choose end date' }]}
+                  >
+                    <DatePicker style={{ width: 220 }} />
+                  </Form.Item>
+                </Space>
+
+                <Form.Item label='Reason' name='reason'>
+                  <Input.TextArea rows={4} placeholder='Add reason or notes' />
+                </Form.Item>
+
+                <Form.Item>
+                  <Space>
+                    <Button type='primary' loading={saving} onClick={() => void submitApplyLeave()}>
+                      Submit
+                    </Button>
+                    <Button onClick={() => applyForm.resetFields()}>Reset</Button>
+                  </Space>
+                </Form.Item>
+              </Form>
+            )}
+          </Card>
+
+          <Card title='All Requests' style={{ borderRadius: 16, marginBottom: 16 }}>
+            <Table
+              rowKey='id'
+              loading={loading}
+              dataSource={filteredAllRequests}
+              columns={requestColumns}
+              pagination={{ pageSize: 10 }}
+              locale={{ emptyText: 'No leave requests found' }}
             />
           </Card>
 
-          {requestTab === 'apply' ? (
-            <Card title='Apply Leave' style={{ borderRadius: 16 }}>
-              {!canApplyLeave ? (
-                <Empty description='No permission to apply leave' />
-              ) : (
-                <Form form={applyForm} layout='vertical' style={{ maxWidth: 520 }}>
-                  <Form.Item
-                    label='Leave Type'
-                    name='type'
-                    rules={[{ required: true, message: 'Please choose leave type' }]}
-                  >
-                    <Select
-                      placeholder='Select leave type'
-                      options={activeLeaveTypes.map((item) => ({ label: item.name, value: item.name }))}
-                    />
-                  </Form.Item>
-
-                  <Space align='start' style={{ width: '100%' }}>
-                    <Form.Item
-                      label='Start Date'
-                      name='startDate'
-                      rules={[{ required: true, message: 'Please choose start date' }]}
-                    >
-                      <DatePicker style={{ width: 220 }} />
-                    </Form.Item>
-
-                    <Form.Item
-                      label='End Date'
-                      name='endDate'
-                      rules={[{ required: true, message: 'Please choose end date' }]}
-                    >
-                      <DatePicker style={{ width: 220 }} />
-                    </Form.Item>
-                  </Space>
-
-                  <Form.Item label='Reason' name='reason'>
-                    <Input.TextArea rows={4} placeholder='Add reason or notes' />
-                  </Form.Item>
-
-                  <Form.Item>
-                    <Space>
-                      <Button type='primary' loading={saving} onClick={() => void submitApplyLeave()}>
-                        Submit
-                      </Button>
-                      <Button onClick={() => applyForm.resetFields()}>Reset</Button>
-                    </Space>
-                  </Form.Item>
-                </Form>
-              )}
-            </Card>
-          ) : (
-            <Card style={{ borderRadius: 16 }}>
-              <Table
-                rowKey='id'
-                loading={loading}
-                dataSource={requestTab === 'pending' ? filteredPendingRequests : filteredAllRequests}
-                columns={requestColumns}
-                pagination={{ pageSize: 10 }}
-                locale={{ emptyText: 'No leave requests found' }}
-              />
-            </Card>
-          )}
+          <Card title='Pending Approval' style={{ borderRadius: 16 }}>
+            <Table
+              rowKey='id'
+              loading={loading}
+              dataSource={filteredPendingRequests}
+              columns={requestColumns}
+              pagination={{ pageSize: 10 }}
+              locale={{ emptyText: 'No pending leave requests found' }}
+            />
+          </Card>
         </>
       ) : (
         <>
@@ -451,20 +444,7 @@ export default function Leaves() {
             </Card>
           ) : (
             <>
-              <Card style={{ marginBottom: 16, borderRadius: 16 }}>
-                <Tabs
-                  activeKey={settingsTab}
-                  onChange={(key) => setSettingsTab(key as 'types' | 'balances' | 'approvers')}
-                  items={[
-                    { key: 'types', label: 'Leave Types' },
-                    { key: 'balances', label: 'Leave Balance' },
-                    { key: 'approvers', label: 'Leave Approvers' },
-                  ]}
-                />
-              </Card>
-
-              {settingsTab === 'types' && (
-                <Card title='Leave Types' style={{ borderRadius: 16 }} loading={settingLoading}>
+              <Card title='Leave Types' style={{ borderRadius: 16, marginBottom: 16 }} loading={settingLoading}>
                   <Space style={{ width: '100%', marginBottom: 16 }} wrap>
                     <Form form={typeForm} layout='inline' initialValues={{ category: 'PAID', active: true }}>
                       <Form.Item
@@ -541,11 +521,9 @@ export default function Leaves() {
                       },
                     ]}
                   />
-                </Card>
-              )}
+              </Card>
 
-              {settingsTab === 'balances' && (
-                <Card title='Leave Balance' style={{ borderRadius: 16 }} loading={settingLoading}>
+              <Card title='Leave Balance' style={{ borderRadius: 16, marginBottom: 16 }} loading={settingLoading}>
                   <Typography.Paragraph type='secondary'>
                     Examples: Monthly 2 Days with carry forward, or Yearly 14 Days.
                   </Typography.Paragraph>
@@ -644,11 +622,9 @@ export default function Leaves() {
                       },
                     ]}
                   />
-                </Card>
-              )}
+              </Card>
 
-              {settingsTab === 'approvers' && (
-                <Card title='Leave Approvers' style={{ borderRadius: 16 }} loading={settingLoading}>
+              <Card title='Leave Approvers' style={{ borderRadius: 16 }} loading={settingLoading}>
                   <Typography.Paragraph type='secondary'>
                     Multiple approvers are supported for company leave approval.
                   </Typography.Paragraph>
@@ -732,8 +708,7 @@ export default function Leaves() {
                     ]}
                     locale={{ emptyText: 'No leave approvers configured' }}
                   />
-                </Card>
-              )}
+              </Card>
             </>
           )}
         </>

@@ -91,7 +91,7 @@ export default function AgentDownloads() {
     <Space direction='vertical' size={16} style={{ width: '100%' }}>
       <Card loading={loading}>
         <Space direction='vertical' size={6}>
-          <Title level={4} style={{ margin: 0 }}>Agent Download Center</Title>
+          <Title level={4} style={{ margin: 0 }}>App Download</Title>
           <Text type='secondary'>Distribute employee desktop agent installers by platform.</Text>
           <Descriptions column={2} size='small'>
             <Descriptions.Item label='Current Version'>

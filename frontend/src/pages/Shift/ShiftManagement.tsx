@@ -35,12 +35,6 @@ export default function ShiftManagement() {
         <Table rowKey="key" columns={referenceColumns} dataSource={referenceData} pagination={false} />
       </Card>
 
-      <Card title="End-to-End Flow">
-        <Text>
-          {"Shift setup (Shift Templates / Teams / Rosters) -> Attendance -> Cross-day working hours calculation (backend event aggregation) -> Reporting and export (Reports)"}
-        </Text>
-      </Card>
-
       <Tabs
         defaultActiveKey="templates"
         items={[

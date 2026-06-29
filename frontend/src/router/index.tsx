@@ -97,9 +97,9 @@ export default function Router() {
           }
         >
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/dashboard/overview" element={<Dashboard />} />
-          <Route path="/dashboard/analytics" element={<Dashboard />} />
-          <Route path="/dashboard/realtime" element={<Dashboard />} />
+          <Route path="/dashboard/overview" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard/analytics" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard/realtime" element={<Navigate to="/dashboard" replace />} />
           <Route
             path="/companies"
             element={

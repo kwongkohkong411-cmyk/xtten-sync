@@ -1,4 +1,4 @@
-import { Button, Divider, Menu, Modal, Space, Tag, Typography, message } from "antd";
+import { Button, Menu } from "antd";
 import React, { useState, useEffect } from "react";
 import {
   DashboardOutlined,
@@ -16,17 +16,11 @@ import {
 } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import { hasPermission, getCurrentUser } from "../../utils/auth";
-import { getAgentReleases, openAgentDownload, type AgentArtifact, type AgentReleasesResponse } from "../../api/agent";
-
-const { Text } = Typography;
 
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [openKeys, setOpenKeys] = useState<string[]>([]);
-  const [downloadOpen, setDownloadOpen] = useState(false);
-  const [downloadLoading, setDownloadLoading] = useState(false);
-  const [releases, setReleases] = useState<AgentReleasesResponse | null>(null);
 
   const currentUser = getCurrentUser();
   const companyName = currentUser?.company?.name || "XTTEN";
@@ -38,11 +32,7 @@ export default function Sidebar() {
       icon: <DashboardOutlined />,
       label: "Dashboard",
       required: null,
-      children: [
-        { key: "/dashboard/overview", label: "Overview", required: null },
-        { key: "/dashboard/analytics", label: "Analytics", required: null },
-        { key: "/dashboard/realtime", label: "Real-time Status", required: null },
-      ],
+      children: [],
     },
     {
       key: "organization",
@@ -52,17 +42,6 @@ export default function Sidebar() {
       children: [
         { key: "/organization", label: "Organization Settings", required: "organization:view" },
         { key: "/organization/companies", label: "Manage Companies", required: "organization:view" },
-      ],
-    },
-    {
-      key: "billing",
-      icon: <CreditCardOutlined />,
-      label: "Billing",
-      required: "billing:view",
-      children: [
-        { key: "/billing", label: "Billing Overview", required: "billing:view" },
-        { key: "/billing/subscriptions", label: "Subscriptions", required: "billing:view" },
-        { key: "/billing/invoices", label: "Invoices", required: "billing:view" },
       ],
     },
     {
@@ -140,6 +119,17 @@ export default function Sidebar() {
         { key: "/roles/assign", label: "Role Assignment", required: "roles:manage" },
       ],
     },
+    {
+      key: "billing",
+      icon: <CreditCardOutlined />,
+      label: "Billing",
+      required: "billing:view",
+      children: [
+        { key: "/billing", label: "Billing Home", required: "billing:view" },
+        { key: "/billing/subscriptions", label: "Subscriptions", required: "billing:view" },
+        { key: "/billing/invoices", label: "Invoices", required: "billing:view" },
+      ],
+    },
   ];
 
   const visibleItems = items
@@ -199,24 +189,6 @@ export default function Sidebar() {
 
     navigate(key);
   }
-
-  async function openDownloadPanel() {
-    setDownloadOpen(true);
-    if (releases || downloadLoading) return;
-
-    setDownloadLoading(true);
-    try {
-      const res = await getAgentReleases();
-      setReleases(res.data || null);
-    } catch (error: any) {
-      message.error(error?.response?.data?.message || "Failed to load agent download info");
-    } finally {
-      setDownloadLoading(false);
-    }
-  }
-
-  const windowsArtifacts = releases?.platforms?.windows?.artifacts || [];
-  const firstAvailableWindows = windowsArtifacts.find((item: AgentArtifact) => item.available);
 
   return (
     <div
@@ -292,7 +264,7 @@ export default function Sidebar() {
           <Button
             block
             icon={<DownloadOutlined />}
-            onClick={() => void openDownloadPanel()}
+            onClick={() => navigate("/agent/download")}
             style={{
               height: 40,
               borderRadius: 10,
@@ -303,58 +275,10 @@ export default function Sidebar() {
               letterSpacing: 0.4,
             }}
           >
-            APP DOWNLOAD
+            App Download
           </Button>
         </div>
       )}
-
-      <Modal
-        title="APP DOWNLOAD"
-        open={downloadOpen}
-        onCancel={() => setDownloadOpen(false)}
-        footer={null}
-      >
-        <Space direction="vertical" style={{ width: "100%" }} size={12}>
-          <div>
-            <Text strong>Current Version: </Text>
-            <Tag color="blue">{releases?.version || "Not available"}</Tag>
-          </div>
-
-          <Divider style={{ margin: "4px 0" }} />
-
-          <div>
-            <Text strong>Windows Agent</Text>
-            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {downloadLoading ? (
-                <Tag>Loading...</Tag>
-              ) : windowsArtifacts.length === 0 ? (
-                <Tag color="gold">Coming Soon</Tag>
-              ) : (
-                windowsArtifacts.map((artifact: AgentArtifact) => (
-                  <Button
-                    key={`win-${artifact.format}`}
-                    type={artifact.available ? "primary" : "default"}
-                    disabled={!artifact.available}
-                    onClick={() => {
-                      if (!artifact.available) return;
-                      openAgentDownload("windows", artifact.format);
-                    }}
-                  >
-                    {artifact.available
-                      ? `Download ${artifact.format.toUpperCase()}`
-                      : `${artifact.format.toUpperCase()} Not available`}
-                  </Button>
-                ))
-              )}
-            </div>
-            {!downloadLoading && !firstAvailableWindows && (
-              <div style={{ marginTop: 8 }}>
-                <Text type="secondary">Coming Soon / Not available</Text>
-              </div>
-            )}
-          </div>
-        </Space>
-      </Modal>
     </div>
   );
 }
