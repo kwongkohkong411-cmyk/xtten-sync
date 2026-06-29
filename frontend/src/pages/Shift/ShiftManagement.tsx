@@ -19,8 +19,8 @@ const referenceColumns = [
 ];
 
 const referenceData = [
-  { key: "morning", name: "早班", start: "08:00", end: "17:00", crossDay: false, break: "60 min", team: "A Team" },
-  { key: "night", name: "晚班", start: "20:00", end: "08:00", crossDay: true, break: "90 min", team: "Night Team" },
+  { key: "morning", name: "Morning Shift", start: "08:00", end: "17:00", crossDay: false, break: "60 min", team: "A Team" },
+  { key: "night", name: "Night Shift", start: "20:00", end: "08:00", crossDay: true, break: "90 min", team: "Night Team" },
 ];
 
 export default function ShiftManagement() {

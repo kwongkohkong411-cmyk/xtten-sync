@@ -198,7 +198,7 @@ export default function Rosters() {
       render: (v: string) => v || "-",
     },
     {
-      title: "Work Group",
+      title: "Team",
       render: (_: any, r: any) => r.workGroup?.name,
     },
     {
@@ -277,7 +277,7 @@ export default function Rosters() {
             <DatePicker picker="month" style={{ width: "100%" }} />
           </Form.Item>
 
-          <Form.Item name="workGroupId" label="Work Group">
+          <Form.Item name="workGroupId" label="Team">
             <Select
               options={filteredWorkGroups.map((g) => ({
                 label: g.name,

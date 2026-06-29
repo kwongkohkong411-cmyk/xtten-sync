@@ -531,8 +531,8 @@ export default function Attendance() {
       <Card>
         <Space style={{ width: "100%", justifyContent: "space-between" }}>
           <div>
-            <Text strong style={{ fontSize: 18 }}>Attendance 打卡考勤</Text>
-            <div><Text type="secondary">员工打卡与管理员考勤视图</Text></div>
+            <Text strong style={{ fontSize: 18 }}>Attendance</Text>
+            <div><Text type="secondary">Employee check-in and admin attendance view</Text></div>
           </div>
           <RangePicker
             value={range}
@@ -550,10 +550,10 @@ export default function Attendance() {
         items={[
           {
             key: "self",
-            label: "员工自助打卡",
+            label: "Employee Self Check-in",
             children: (
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card title="今日打卡操作">
+                <Card title="Today's Check-in Actions">
                   <Space wrap>
                     <Button
                       type="primary"
@@ -593,13 +593,13 @@ export default function Attendance() {
                   </Space>
                 </Card>
 
-                <Card title="今日记录">
+                <Card title="Today's Record">
                   {todaySelfRecord ? (
                     <Space direction="vertical" size={6}>
-                      <Text>上班: {toDateTime(todaySelfRecord.checkIn)}</Text>
-                      <Text>下班: {toDateTime(todaySelfRecord.checkOut)}</Text>
-                      <Text>实际工时: {toHours(todaySelfRecord.totalHoursDecimal ?? todaySelfRecord.totalHours)} 小时</Text>
-                      <Text>状态: {todaySelfRecord.status || todaySelfRecord.anomaly || "-"}</Text>
+                      <Text>Check In: {toDateTime(todaySelfRecord.checkIn)}</Text>
+                      <Text>Check Out: {toDateTime(todaySelfRecord.checkOut)}</Text>
+                      <Text>Worked Hours: {toHours(todaySelfRecord.totalHoursDecimal ?? todaySelfRecord.totalHours)} hrs</Text>
+                      <Text>Status: {todaySelfRecord.status || todaySelfRecord.anomaly || "-"}</Text>
                     </Space>
                   ) : (
                     <Empty description="Today no attendance record" />
@@ -610,9 +610,9 @@ export default function Attendance() {
           },
           {
             key: "admin",
-            label: "管理员/HR 视图",
+            label: "Admin / HR View",
             children: (
-              <Card title="员工出勤明细">
+              <Card title="Employee Attendance Details">
                 <Space style={{ marginBottom: 12 }} wrap>
                   <DatePicker
                     allowClear
@@ -626,7 +626,7 @@ export default function Attendance() {
                   <Select
                     allowClear
                     style={{ width: 220 }}
-                    placeholder="筛选团队"
+                    placeholder="Filter Team"
                     value={teamFilter}
                     onChange={setTeamFilter}
                     options={teamOptions}
@@ -634,7 +634,7 @@ export default function Attendance() {
                   <Select
                     allowClear
                     style={{ width: 260 }}
-                    placeholder="筛选员工"
+                    placeholder="Filter Employee"
                     value={employeeFilter}
                     onChange={setEmployeeFilter}
                     options={employeeOptions}
@@ -647,9 +647,9 @@ export default function Attendance() {
                   pagination={{ pageSize: 10 }}
                   columns={[
                     { title: "Shift Date", dataIndex: "shiftDate" },
-                    { title: "员工", dataIndex: "employee" },
-                    { title: "团队", dataIndex: "team" },
-                    { title: "班次", dataIndex: "shift" },
+                    { title: "Employee", dataIndex: "employee" },
+                    { title: "Team", dataIndex: "team" },
+                    { title: "Shift", dataIndex: "shift" },
                     {
                       title: "Scheduled Time",
                       render: (_, row) => `${row.scheduledStartTime || "-"} → ${row.scheduledEndTime || "-"}`,
@@ -658,7 +658,7 @@ export default function Attendance() {
                       title: "Actual Time",
                       render: (_, row) => `${toTime(row.checkIn)} → ${toTime(row.checkOut)}`,
                     },
-                    { title: "实际工时", dataIndex: "worked", render: (v: number) => toHourMinute(v) },
+                    { title: "Worked Hours", dataIndex: "worked", render: (v: number) => toHourMinute(v) },
                     {
                       title: "Status",
                       dataIndex: "status",
@@ -718,10 +718,10 @@ export default function Attendance() {
           },
           {
             key: "flow-test",
-            label: "全流程测试",
+            label: "End-to-End Validation",
             children: (
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card title="Night Shift 流程校验">
+                <Card title="Night Shift Validation">
                   <Space wrap>
                     <Tag color="purple">Night Shift 20:00</Tag>
                     <Tag>Check In</Tag>
@@ -734,7 +734,7 @@ export default function Attendance() {
                   <Space wrap style={{ marginTop: 12 }}>
                     <Select
                       style={{ width: 260 }}
-                      placeholder="选择员工"
+                      placeholder="Select Employee"
                       value={scenarioEmployeeId}
                       onChange={setScenarioEmployeeId}
                       options={employeeOptions}
@@ -743,21 +743,21 @@ export default function Attendance() {
                   </Space>
                 </Card>
 
-                <Card title="校验结果（工时 / 迟到 / 早退 / Break）">
+                <Card title="Validation Results (Hours / Late / Early Leave / Break)">
                   {scenarioResult ? (
                     <Space direction="vertical" size={8}>
-                      <Text>员工: {scenarioResult.employeeName}</Text>
-                      <Text>班次: {scenarioResult.shiftName} ({scenarioResult.shiftWindow})</Text>
+                      <Text>Employee: {scenarioResult.employeeName}</Text>
+                      <Text>Shift: {scenarioResult.shiftName} ({scenarioResult.shiftWindow})</Text>
                       <Text>Check In: {toDateTime(scenarioResult.checkIn)}</Text>
                       <Text>Check Out: {toDateTime(scenarioResult.checkOut)}</Text>
-                      <Text>工时: {toHours(scenarioResult.totalHours)} 小时</Text>
-                      <Text>Break 时间: {scenarioResult.breakMinutes} 分钟</Text>
-                      <Text>迟到: {scenarioResult.lateMinutes} 分钟 {scenarioResult.isLate ? <Tag color="orange">LATE</Tag> : <Tag color="green">OK</Tag>}</Text>
-                      <Text>早退: {scenarioResult.earlyLeaveMinutes} 分钟 {scenarioResult.isEarlyLeave ? <Tag color="red">EARLY_LEAVE</Tag> : <Tag color="green">OK</Tag>}</Text>
-                      <Text>最终状态: <Tag>{scenarioResult.status}</Tag></Text>
+                      <Text>Hours: {toHours(scenarioResult.totalHours)} hrs</Text>
+                      <Text>Break Duration: {scenarioResult.breakMinutes} min</Text>
+                      <Text>Late: {scenarioResult.lateMinutes} min {scenarioResult.isLate ? <Tag color="orange">LATE</Tag> : <Tag color="green">OK</Tag>}</Text>
+                      <Text>Early Leave: {scenarioResult.earlyLeaveMinutes} min {scenarioResult.isEarlyLeave ? <Tag color="red">EARLY_LEAVE</Tag> : <Tag color="green">OK</Tag>}</Text>
+                      <Text>Final Status: <Tag>{scenarioResult.status}</Tag></Text>
                     </Space>
                   ) : (
-                    <Empty description="选定员工/日期暂无可校验打卡数据" />
+                    <Empty description="No valid attendance data for selected employee/date" />
                   )}
                 </Card>
               </Space>

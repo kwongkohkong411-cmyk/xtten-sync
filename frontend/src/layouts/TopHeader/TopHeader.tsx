@@ -32,7 +32,7 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
   },
   "/holiday-settings": {
     title: "Holiday Settings",
-    subtitle: "国家/公司假期规则",
+    subtitle: "Public and Company Holiday Rules",
   },
   "/activity": {
     title: "Screenshot Wall",
@@ -44,7 +44,7 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
   },
   "/roles": {
     title: "Users / Roles",
-    subtitle: "权限与账号管理",
+    subtitle: "Access and Account Management",
   },
 };
 

@@ -110,7 +110,7 @@ export default function Dashboard() {
         <Space style={{ width: "100%", justifyContent: "space-between" }}>
           <div>
             <Title level={3} style={{ marginBottom: 6 }}>Dashboard</Title>
-            <Text type="secondary">今日概览与员工实时状态</Text>
+            <Text type="secondary">Today's overview and real-time employee status</Text>
           </div>
           <DatePicker value={date} onChange={(v) => setDate(v || dayjs())} />
         </Space>
@@ -146,19 +146,19 @@ export default function Dashboard() {
         </Col>
       </Row>
 
-      <Card title="员工实时状态表" loading={loading}>
+      <Card title="Real-time Employee Status" loading={loading}>
         <Table
           rowKey="key"
           dataSource={tableRows}
           pagination={{ pageSize: 10 }}
           columns={[
-            { title: "员工", dataIndex: "employeeName" },
+            { title: "Employee", dataIndex: "employeeName" },
             {
               title: "Status",
               dataIndex: "status",
               render: (v: string) => <Tag color={v === "LATE" ? "orange" : v === "LEAVE" ? "blue" : v === "ON_TIME" ? "green" : "default"}>{v}</Tag>,
             },
-            { title: "当前应用", dataIndex: "currentApp" },
+            { title: "Current App", dataIndex: "currentApp" },
             {
               title: "Working Hours",
               dataIndex: "workingHours",

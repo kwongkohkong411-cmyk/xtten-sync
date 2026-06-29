@@ -22,62 +22,62 @@ const GROUPS: PermissionGroup[] = [
   {
     groupKey: "dashboard",
     title: "Dashboard",
-    children: [{ key: "dashboard:view", label: "查看实时状态" }],
+    children: [{ key: "dashboard:view", label: "View Real-time Status" }],
   },
   {
     groupKey: "attendance",
-    title: "Attendance 打卡考勤",
+    title: "Attendance",
     children: [
-      { key: "attendance:view", label: "查看打卡记录" },
-      { key: "attendance:manage", label: "管理打卡记录" },
-      { key: "report:export", label: "导出工时报表" },
+      { key: "attendance:view", label: "View Attendance Records" },
+      { key: "attendance:manage", label: "Manage Attendance Records" },
+      { key: "report:export", label: "Export Work-hour Reports" },
     ],
   },
   {
     groupKey: "shift",
-    title: "Shift 班次管理",
+    title: "Shift",
     children: [
-      { key: "shift:view", label: "查看班次" },
-      { key: "shift:manage", label: "管理排班" },
+      { key: "shift:view", label: "View Shifts" },
+      { key: "shift:manage", label: "Manage Rosters" },
     ],
   },
   {
     groupKey: "leave",
-    title: "Leave 请假审批",
+    title: "Leave",
     children: [
-      { key: "leave:apply", label: "提交请假" },
-      { key: "leave:view", label: "查看请假" },
-      { key: "leave:manage", label: "审批请假" },
+      { key: "leave:apply", label: "Apply Leave" },
+      { key: "leave:view", label: "View Leave" },
+      { key: "leave:manage", label: "Approve Leave" },
     ],
   },
   {
     groupKey: "reports",
-    title: "Reports 报表",
+    title: "Reports",
     children: [
-      { key: "report:view", label: "查看报表" },
-      { key: "report:export", label: "导出报表" },
+      { key: "report:view", label: "View Reports" },
+      { key: "report:export", label: "Export Reports" },
     ],
   },
   {
     groupKey: "activity",
-    title: "Activity Monitoring 监控",
+    title: "Screenshot Wall",
     children: [
-      { key: "activity:view", label: "查看监控" },
-      { key: "activity:manage", label: "管理监控" },
+      { key: "activity:view", label: "View Screenshot Monitoring" },
+      { key: "activity:manage", label: "Manage Screenshot Monitoring" },
     ],
   },
   {
     groupKey: "holiday",
     title: "Holiday Settings",
     children: [
-      { key: "holiday:view", label: "查看假期" },
-      { key: "holiday:manage", label: "管理假期" },
+      { key: "holiday:view", label: "View Holidays" },
+      { key: "holiday:manage", label: "Manage Holidays" },
     ],
   },
   {
     groupKey: "user",
-    title: "Users / Roles 管理",
-    children: [{ key: "user:manage", label: "管理用户与角色" }],
+    title: "Users & Roles",
+    children: [{ key: "user:manage", label: "Manage Users and Roles" }],
   },
 ];
 
@@ -147,7 +147,7 @@ export default function PermissionTree({
 
   return (
     <div style={{ maxHeight: 380, overflowY: "auto", paddingRight: 4 }}>
-      <Typography.Text strong>权限树（按菜单结构）</Typography.Text>
+      <Typography.Text strong>Permission Tree (By Menu Structure)</Typography.Text>
 
       <div style={{ marginTop: 12 }}>
         <Collapse
@@ -200,7 +200,7 @@ export default function PermissionTree({
                         </Tag>
                         {!isAvailable && (
                           <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
-                            未配置
+                            Not Configured
                           </Typography.Text>
                         )}
                       </div>
@@ -217,7 +217,7 @@ export default function PermissionTree({
 
       {unknownPermissions.length > 0 && (
         <>
-          <Typography.Text strong>其他权限</Typography.Text>
+          <Typography.Text strong>Other Permissions</Typography.Text>
           <div style={{ marginTop: 8, marginLeft: 8, display: "grid", gap: 8 }}>
             {unknownPermissions.map((permission) => (
               <div key={permission.id}>

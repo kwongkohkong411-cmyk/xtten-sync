@@ -150,7 +150,7 @@ export default function HolidaySettings() {
         }
       >
         <Space direction="vertical" size={4}>
-          <div>国家假期与公司假期统一管理，影响缺勤判断、工时统计、月报与加班计算。</div>
+          <div>Unified management for public and company holidays; affects absence checks, work-hour stats, monthly reports, and overtime calculations.</div>
         </Space>
       </Card>
 
@@ -159,8 +159,8 @@ export default function HolidaySettings() {
           activeKey={tab}
           onChange={(key) => setTab(key as "COUNTRY" | "COMPANY")}
           items={[
-            { key: "COUNTRY", label: "国家假期" },
-            { key: "COMPANY", label: "公司假期" },
+            { key: "COUNTRY", label: "Public Holidays" },
+            { key: "COMPANY", label: "Company Holidays" },
           ]}
         />
 
