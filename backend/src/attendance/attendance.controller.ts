@@ -85,4 +85,18 @@ export class AttendanceController {
   ) {
     return this.service.events(req, { startDate, endDate, employeeId });
   }
+
+  // =====================
+  // DETECT ABSENTS
+  // =====================
+  @UseGuards(JwtAuthGuard)
+  @RequirePermission('attendance:manage')
+  @Post('detect-absents')
+  detectAbsents(
+    @Req() req: RequestWithUser,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.service.detectAbsents(req, { startDate, endDate });
+  }
 }

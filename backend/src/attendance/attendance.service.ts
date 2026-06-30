@@ -306,6 +306,9 @@ export class AttendanceService {
   ): Promise<ScheduleDecision> {
     const day = this.normalizeDayStart(date);
 
+    // ========================
+    // Step 1: Check Employee-specific Roster Detail (highest priority)
+    // ========================
     const rosterDetail = await this.prisma.rosterDetail.findFirst({
       where: {
         companyId,
@@ -354,7 +357,10 @@ export class AttendanceService {
       };
     }
 
-    const roster = await this.prisma.roster.findFirst({
+    // ========================
+    // Step 2: Check Employee-specific Roster (medium priority)
+    // ========================
+    const employeeRoster = await this.prisma.roster.findFirst({
       where: {
         employeeId,
         companyId,
@@ -373,8 +379,8 @@ export class AttendanceService {
       },
     });
 
-    if (roster?.shift?.startTime) {
-      const shift = roster.shift;
+    if (employeeRoster?.shift?.startTime) {
+      const shift = employeeRoster.shift;
       const lateAfter = shift.lateAfter ?? 10;
       const earlyLeave = shift.earlyLeave ?? 10;
       const scheduledStart = this.buildDateFromClock(day, shift.startTime);
@@ -400,6 +406,68 @@ export class AttendanceService {
       };
     }
 
+    // ========================
+    // Step 3: Check Team-level Roster (for multi-team support)
+    // Get the employee first to find their team
+    // ========================
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { workGroupId: true },
+    });
+
+    if (employee?.workGroupId) {
+      // Check for Team-level roster (employeeId is null in the roster)
+      const teamRoster = await this.prisma.roster.findFirst({
+        where: {
+          employeeId: null,
+          workGroupId: employee.workGroupId,
+          companyId,
+          month: this.toMonthKey(day),
+        },
+        select: {
+          shift: {
+            select: {
+              startTime: true,
+              endTime: true,
+              lateAfter: true,
+              earlyLeave: true,
+              crossDay: true,
+            },
+          },
+        },
+      });
+
+      if (teamRoster?.shift?.startTime) {
+        const shift = teamRoster.shift;
+        const lateAfter = shift.lateAfter ?? 10;
+        const earlyLeave = shift.earlyLeave ?? 10;
+        const scheduledStart = this.buildDateFromClock(day, shift.startTime);
+        return {
+          lateThreshold: this.buildThresholdByStartTime(
+            day,
+            shift.startTime,
+            lateAfter,
+          ),
+          scheduledStart,
+          scheduledEnd: this.buildScheduledEndDate(
+            day,
+            shift.startTime,
+            shift.endTime,
+            Boolean(shift.crossDay),
+          ),
+          source: 'MONTH_ROSTER',
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+          lateAfterMinutes: lateAfter,
+          earlyLeaveToleranceMinutes: earlyLeave,
+          crossDay: Boolean(shift.crossDay),
+        };
+      }
+    }
+
+    // ========================
+    // Step 4: Use default schedule (lowest priority)
+    // ========================
     return this.buildDefaultSchedule(day);
   }
 
@@ -941,11 +1009,25 @@ export class AttendanceService {
     const lateMinutes = this.computeLateMinutes(record.checkIn, schedule) || 0;
     const earlyLeaveMinutes = this.computeEarlyLeaveMinutes(now, schedule) || 0;
 
+    // ========================
+    // Determine final status based on attendance patterns
+    // ========================
+    let finalStatus = record.status || 'PRESENT';
+    
+    if (earlyLeaveMinutes > 0) {
+      finalStatus = 'EARLY_LEAVE';
+    } else if (lateMinutes > 0) {
+      finalStatus = 'LATE';
+    } else {
+      finalStatus = 'PRESENT';
+    }
+
     const updated = await this.prisma.attendance.update({
       where: { id: record.id },
       data: {
         checkOut: now,
         totalHours: worked.totalHours,
+        status: finalStatus,
       },
     });
 
@@ -1099,13 +1181,35 @@ export class AttendanceService {
   async today(req: AttendanceRequest) {
     const user = this.requireUser(req);
     const employee = await this.getEmployee(user.id);
+    const today = this.getToday();
 
-    return this.prisma.attendance.findFirst({
+    // Try to find existing attendance record
+    const attendance = await this.prisma.attendance.findFirst({
       where: {
         employeeId: employee.id,
-        date: this.getToday(),
+        date: today,
       },
     });
+
+    // Get scheduled shift for today
+    const schedule = await this.resolveScheduleForDate(
+      employee.id,
+      employee.companyId,
+      today,
+    );
+
+    return {
+      attendance: attendance || null,
+      today,
+      scheduled: {
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        lateAfterMinutes: schedule.lateAfterMinutes,
+        earlyLeaveToleranceMinutes: schedule.earlyLeaveToleranceMinutes,
+        source: schedule.source,
+      },
+      status: attendance?.status || (schedule.source === 'DEFAULT' ? 'NO_SCHEDULE' : 'NOT_CHECKED_IN'),
+    };
   }
 
   // =========================
@@ -1528,6 +1632,147 @@ export class AttendanceService {
         workDateStrategy: ATTENDANCE_RULE.WORK_DATE_STRATEGY,
       },
       events: withTimeline,
+    };
+  }
+
+  // =========================
+  // DETECT ABSENTS (缺勤检测)
+  // =========================
+  async detectAbsents(
+    req: AttendanceRequest,
+    query: { startDate?: string; endDate?: string },
+  ) {
+    const user = this.requireUser(req);
+    const scope = await this.resolveAttendanceReadScope(user);
+
+    const today = this.getToday();
+    const start = this.parseDate(query.startDate, today) || today;
+    const end = this.parseDate(query.endDate, today) || today;
+
+    if (!scope.visibleEmployeeIds && scope.context.roleName !== 'SUPER_ADMIN') {
+      return { absents: [], count: 0, message: 'No visible employees' };
+    }
+
+    // Get all days in the range
+    const allDays = this.eachDay(start, end);
+
+    // Find rosters in the date range
+    const rosters = await this.prisma.roster.findMany({
+      where: {
+        ...(scope.companyId ? { companyId: scope.companyId } : {}),
+        month: {
+          in: allDays.map((d) => this.toMonthKey(d)),
+        },
+      },
+      select: {
+        id: true,
+        month: true,
+        employeeId: true,
+        workGroupId: true,
+        companyId: true,
+        shift: {
+          select: {
+            id: true,
+            startTime: true,
+          },
+        },
+        workGroup: {
+          select: {
+            id: true,
+            name: true,
+            employees: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const absents: any[] = [];
+    const processedDates = new Set<string>();
+
+    for (const roster of rosters) {
+      // For Employee-level rosters
+      if (roster.employeeId) {
+        const affectedEmployeeIds = [roster.employeeId];
+
+        for (const employeeId of affectedEmployeeIds) {
+          for (const day of allDays) {
+            const dateKey = `${this.dateKey(day)}:${employeeId}`;
+            if (processedDates.has(dateKey)) continue;
+            processedDates.add(dateKey);
+
+            // Check if attendance record exists
+            const attendance = await this.prisma.attendance.findFirst({
+              where: {
+                employeeId,
+                date: day,
+              },
+              select: { id: true, checkIn: true },
+            });
+
+            if (!attendance || !attendance.checkIn) {
+              absents.push({
+                employeeId,
+                date: day,
+                rosterType: 'EMPLOYEE_LEVEL',
+                shiftStartTime: roster.shift.startTime,
+              });
+            }
+          }
+        }
+      } else {
+        // For Team-level rosters - all team members are affected
+        const affectedEmployeeIds = roster.workGroup.employees.map((e) => e.id);
+
+        for (const employeeId of affectedEmployeeIds) {
+          // Filter by visible employees if not SUPER_ADMIN
+          if (
+            scope.visibleEmployeeIds !== null &&
+            !scope.visibleEmployeeIds.includes(employeeId)
+          ) {
+            continue;
+          }
+
+          for (const day of allDays) {
+            const dateKey = `${this.dateKey(day)}:${employeeId}`;
+            if (processedDates.has(dateKey)) continue;
+            processedDates.add(dateKey);
+
+            // Check if attendance record exists
+            const attendance = await this.prisma.attendance.findFirst({
+              where: {
+                employeeId,
+                date: day,
+              },
+              select: { id: true, checkIn: true },
+            });
+
+            if (!attendance || !attendance.checkIn) {
+              absents.push({
+                employeeId,
+                employeeName: roster.workGroup.employees.find(
+                  (e) => e.id === employeeId,
+                )?.name,
+                date: day,
+                rosterType: 'TEAM_LEVEL',
+                teamName: roster.workGroup.name,
+                shiftStartTime: roster.shift.startTime,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      count: absents.length,
+      absents,
+      dateRange: { start, end },
+      message: `Found ${absents.length} absence record(s) for the date range`,
     };
   }
 }
