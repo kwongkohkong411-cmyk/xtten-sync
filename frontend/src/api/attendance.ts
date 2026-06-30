@@ -1,10 +1,22 @@
 import client from "./client";
 
+export type AttendanceTodayResponse = {
+  id: string;
+  employeeId: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  breakStart: string | null;
+  breakEnd: string | null;
+  date: string;
+};
+
 export const getAttendanceEvents = (params?: {
   startDate?: string;
   endDate?: string;
   employeeId?: string;
 }) => client.get("/attendance/events", { params });
+
+export const getAttendanceToday = () => client.get<AttendanceTodayResponse | null>("/attendance/today");
 
 export const checkIn = () => client.post("/attendance/check-in", {});
 

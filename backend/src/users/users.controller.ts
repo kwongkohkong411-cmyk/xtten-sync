@@ -24,6 +24,7 @@ type UserUpsertBody = {
   roleId?: string;
   status?: string;
   companyId?: string;
+  workGroupId?: string;
 };
 
 type UserCreateBody = {
@@ -34,6 +35,7 @@ type UserCreateBody = {
   roleId?: string;
   status?: string;
   companyId?: string;
+  workGroupId?: string;
 };
 
 @Controller('users')

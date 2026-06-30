@@ -1,14 +1,15 @@
 {
   "name": "xtten-desktop-agent",
   "version": "0.1.0",
-  "description": "XTTEN desktop agent for employee telemetry",
+  "description": "XTTEN Agent for employee attendance, leave, and work reporting",
   "main": "main.js",
   "private": true,
   "author": "XTTEN",
   "scripts": {
     "dev": "electron .",
-    "pack:win": "electron-builder --win nsis msi --x64",
-    "pack:dir": "electron-builder --dir"
+    "generate:icon": "node scripts/generate-icon.js",
+    "pack:win": "npm run generate:icon && electron-builder --win nsis msi --x64",
+    "pack:dir": "npm run generate:icon && electron-builder --dir"
   },
   "devDependencies": {
     "electron": "^33.2.1",
@@ -17,7 +18,7 @@
   "build": {
     "appId": "com.xtten.agent",
     "productName": "XTTEN Agent",
-    "executableName": "xtten-agent",
+    "executableName": "xtten-desktop",
     "directories": {
       "output": "dist"
     },
@@ -28,6 +29,10 @@
       "renderer/**/*"
     ],
     "extraResources": [
+      {
+        "from": "build/app.ico",
+        "to": "icons/app.ico"
+      },
       {
         "from": "../activity-agent.js",
         "to": "agent/activity-agent.js"
@@ -61,6 +66,7 @@
     "electron-winstaller@5.4.0": true
   },
   "dependencies": {
+    "png-to-ico": "^2.1.8",
     "sharp": "^0.35.2"
   }
 }

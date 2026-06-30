@@ -28,7 +28,7 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
   },
   "/attendance/records": {
     title: "Attendance",
-    subtitle: "Clock In / Out Records",
+    subtitle: "Attendance Records",
   },
   "/attendance/calendar": {
     title: "Attendance",
@@ -48,7 +48,7 @@ const pageMap: Record<string, { title: string; subtitle: string }> = {
   },
   "/attendance": {
     title: "Attendance",
-    subtitle: "Clock In / Out Records",
+    subtitle: "Attendance Records",
   },
   "/shift/templates": {
     title: "Shift",
@@ -175,6 +175,7 @@ export default function TopHeader() {
   const currentCompanyId = localStorage.getItem("company_id") || "";
   const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
   const currentCompanyName = currentUser?.company?.name || "No Company Selected";
+  const currentTeamName = currentUser?.teamName || currentUser?.workGroupName || currentUser?.departmentName || "Team Unassigned";
   const timezoneLabel = "UTC+08:00";
   const userName = currentUser?.name || currentUser?.username || "-";
 
@@ -232,6 +233,7 @@ export default function TopHeader() {
       {/* RIGHT */}
       <Space size={14}>
         <Tag color="blue" icon={<BankOutlined />}>{currentCompanyName}</Tag>
+        <Tag color="cyan">{currentTeamName}</Tag>
         <Tag>{timezoneLabel}</Tag>
         <Dropdown menu={{ items: userMenu }} trigger={["click"]}>
           <Button icon={<UserOutlined />}>

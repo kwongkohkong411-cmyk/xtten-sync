@@ -20,11 +20,13 @@
     "test:cov": "jest --coverage",
     "init:rbac": "node -r ts-node/register -r dotenv/config scripts/init-rbac.js",
     "loadtest:reports": "node scripts/loadtest-reports.js",
+    "smoke:desktop-attendance": "node scripts/smoke-desktop-attendance.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
+    "@aws-sdk/s3-request-presigner": "^3.1075.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.2",

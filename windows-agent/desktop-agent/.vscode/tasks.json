@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "desktop-pack-dir",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"pack:dir"
+			],
+			"isBackground": false
+		}
+	]
+}

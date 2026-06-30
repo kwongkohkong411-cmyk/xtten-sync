@@ -93,6 +93,20 @@ export class AuthService {
 
     const employee = await this.prisma.employee.findFirst({
       where: { userId: user.id },
+      include: {
+        department: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        workGroup: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     });
 
     const roleName = user.roleRelation?.name || user.role;
@@ -141,6 +155,9 @@ export class AuthService {
             }
           : undefined,
         employeeId: employee?.id ?? null,
+        teamName: employee?.workGroup?.name || employee?.department?.name || null,
+        workGroupName: employee?.workGroup?.name || null,
+        departmentName: employee?.department?.name || null,
       },
     };
   }

@@ -14,6 +14,7 @@ import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 
 import { getCompanies } from "../../api/company";
 import { getRoles } from "../../api/roles";
+import { getWorkGroups } from "../../api/workGroups";
 import {
   createUser,
   deleteUser,
@@ -32,6 +33,7 @@ export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
+  const [workGroups, setWorkGroups] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -48,10 +50,11 @@ export default function Users() {
     try {
       setLoading(true);
 
-      const [usersRes, companiesRes, rolesRes] = await Promise.all([
+      const [usersRes, companiesRes, rolesRes, workGroupsRes] = await Promise.all([
         getUsers(),
         getCompanies(),
         getRoles(),
+        getWorkGroups(),
       ]);
 
       setUsers(usersRes.data || []);
@@ -62,6 +65,7 @@ export default function Users() {
           ? allRoles
           : allRoles.filter((role: any) => role?.name !== "SUPER_ADMIN"),
       );
+      setWorkGroups(workGroupsRes.data || []);
     } catch (error) {
       messageApi.error("Failed to load users");
     } finally {
@@ -112,6 +116,7 @@ export default function Users() {
         username: values.username,
         password: values.password || undefined,
         companyId: values.companyId || null,
+        workGroupId: values.workGroupId || undefined,
         roleId: values.roleId,
         status: values.status,
       };
@@ -243,6 +248,7 @@ export default function Users() {
         loading={saving}
         editingUser={editingUser}
         companies={companies}
+        workGroups={workGroups}
         roles={roles}
         onCancel={() => {
           setModalOpen(false);

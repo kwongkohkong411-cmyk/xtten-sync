@@ -10,9 +10,11 @@ import { createHash } from 'node:crypto';
 import { extname, join, normalize, resolve } from 'node:path';
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Prisma } from '@prisma/client';
 import { Observable, Subject } from 'rxjs';
 import { BaseRbacService } from '../auth/base-rbac.service';
@@ -275,6 +277,49 @@ export class ActivityService
     return String(process.env.CF_R2_BUCKET || '');
   }
 
+  private async resolveScreenshotAccessUrl(params: {
+    objectKey?: string;
+    screenshotUrl?: string;
+    storageProvider?: string;
+  }) {
+    const objectKey = String(params.objectKey || '').trim();
+    const screenshotUrl = String(params.screenshotUrl || '').trim();
+    const storageProvider = String(params.storageProvider || '').trim().toLowerCase();
+
+    if (storageProvider === 'r2' && objectKey) {
+      const publicBase = String(process.env.CF_R2_PUBLIC_BASE_URL || '').replace(/\/$/, '');
+      if (publicBase) {
+        return `${publicBase}/${objectKey}`;
+      }
+
+      const client = this.getR2Client();
+      if (client) {
+        return getSignedUrl(
+          client,
+          new GetObjectCommand({
+            Bucket: this.getR2BucketName(),
+            Key: objectKey,
+          }),
+          { expiresIn: 900 },
+        );
+      }
+    }
+
+    if (objectKey) {
+      return `/uploads/${objectKey.replace(/^\/+/, '')}`;
+    }
+
+    if (screenshotUrl.startsWith('/uploads/')) {
+      return screenshotUrl;
+    }
+
+    if (screenshotUrl.startsWith('/')) {
+      return `/uploads/${screenshotUrl.replace(/^\/+/, '')}`;
+    }
+
+    return screenshotUrl;
+  }
+
   private makeScreenshotObjectKey(
     companyId: string,
     employeeId: string,
@@ -433,9 +478,24 @@ export class ActivityService
       true,
     );
 
+    const context = await this.resolveActorContext(actor);
     const employeeId = String(payload.employeeId || '').trim();
     if (!employeeId) {
       throw new Error('employeeId is required');
+    }
+
+    if (context.roleName === 'EMPLOYEE') {
+      const selfEmployee = await this.prisma.employee.findFirst({
+        where: {
+          userId: context.userId,
+          companyId: String(companyId),
+        },
+        select: { id: true },
+      });
+
+      if (!selfEmployee?.id || selfEmployee.id !== employeeId) {
+        throw new ForbiddenException('Employees can only upload screenshots for themselves');
+      }
     }
 
     const capturedAt = payload.capturedAt
@@ -484,7 +544,11 @@ export class ActivityService
         perceptualHash: perceptualHash || null,
         objectKey: saved.objectKey,
         storageProvider: String(saved.storageProvider || 'local').toUpperCase(),
-        url: saved.screenshotUrl,
+        url: await this.resolveScreenshotAccessUrl({
+          objectKey: saved.objectKey,
+          screenshotUrl: saved.screenshotUrl,
+          storageProvider: saved.storageProvider,
+        }),
         sizeBytes: buffer.length,
         width: payload.width ? Number(payload.width) : null,
         height: payload.height ? Number(payload.height) : null,
@@ -1104,17 +1168,15 @@ export class ActivityService
         }
       : {};
 
-    const rows = await this.prisma.tenantAuditLog.findMany({
+    const rows = await this.prisma.activityScreenshot.findMany({
       where: {
         companyId: scope.companyId,
-        scope: 'ACTIVITY',
-        action: 'ACTIVITY_SCREENSHOT',
-        createdAt: {
+        capturedAt: {
           gte: start,
           lte: end,
         },
         ...(scope.visibleEmployeeIds
-          ? { entityId: { in: scope.visibleEmployeeIds } }
+          ? { employeeId: { in: scope.visibleEmployeeIds } }
           : {}),
         ...cursorWhere,
       },
@@ -1122,9 +1184,19 @@ export class ActivityService
       take: limit + 1,
       select: {
         id: true,
-        entityId: true,
+        employeeId: true,
+        objectKey: true,
+        storageProvider: true,
+        url: true,
+        metadata: true,
+        appName: true,
+        windowTitle: true,
+        keyboardCount: true,
+        mouseCount: true,
+        idleSec: true,
+        captureSource: true,
+        capturedAt: true,
         createdAt: true,
-        afterData: true,
       },
     });
 
@@ -1134,7 +1206,7 @@ export class ActivityService
     const employeeIds = Array.from(
       new Set(
         rows
-          .map((row) => String(row.entityId || '').trim())
+          .map((row) => String(row.employeeId || '').trim())
           .filter((id) => Boolean(id)),
       ),
     );
@@ -1165,42 +1237,47 @@ export class ActivityService
 
     return {
       date,
-      screenshots: currentRows.map((row) => {
-        const data = this.toRecord(row.afterData);
-        const employeeId = String(row.entityId || '');
+      screenshots: await Promise.all(currentRows.map(async (row) => {
+        const metadata = this.toRecord(row.metadata);
+        const employeeId = String(row.employeeId || '');
         const employee = employeeMap.get(employeeId);
-        const metadata = this.toRecord(data.metadata);
-
-        const keyboardCount = Number(
-          data.keyboardCount || metadata.keyboardCount || 0,
-        );
-        const mouseCount = Number(data.mouseCount || metadata.mouseCount || 0);
-        const idleSec = Number(data.idleSec || metadata.idleSec || 0);
+        const keyboardCount = Number(row.keyboardCount || metadata.keyboardCount || 0);
+        const mouseCount = Number(row.mouseCount || metadata.mouseCount || 0);
+        const idleSec = Number(row.idleSec || metadata.idleSec || 0);
 
         return {
           id: row.id,
-          employeeId: employeeId || row.entityId,
+          employeeId,
           employeeName: employee?.name || this.toText(metadata.employeeName),
           departmentName:
             employee?.department?.name || this.toText(metadata.departmentName),
-          capturedAt: data.capturedAt || row.createdAt,
-          screenshotUrl: data.screenshotUrl || null,
-          screenshotBase64: data.screenshotBase64 || null,
+          capturedAt: row.capturedAt || row.createdAt,
+          screenshotUrl: await this.resolveScreenshotAccessUrl({
+            objectKey: row.objectKey,
+            screenshotUrl: row.url,
+            storageProvider: row.storageProvider,
+          }),
           appName:
-            data.appName ||
-            metadata.appName ||
-            data.processName ||
-            metadata.processName ||
+            row.appName ||
+            this.toText(metadata.appName) ||
+            this.toText(metadata.processName) ||
             null,
-          windowTitle: data.windowTitle || metadata.windowTitle || null,
+          windowTitle: row.windowTitle || this.toText(metadata.windowTitle) || null,
           keyboardCount,
           mouseCount,
           idleSec,
-          isAfk: Boolean(data.isAfk || metadata.isAfk || false),
-          url: data.url || metadata.url || null,
-          metadata,
+          isAfk: Boolean(metadata.isAfk || false),
+          url: this.toText(metadata.url) || null,
+          objectKey: row.objectKey,
+          storageProvider: row.storageProvider,
+          captureSource: row.captureSource,
+          metadata: {
+            ...metadata,
+            objectKey: row.objectKey,
+            storageProvider: row.storageProvider,
+          },
         };
-      }),
+      })),
       nextCursor: hasMore
         ? this.encodeScreenshotCursor(
             currentRows[currentRows.length - 1].createdAt,

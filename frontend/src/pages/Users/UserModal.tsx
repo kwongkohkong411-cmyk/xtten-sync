@@ -1,6 +1,6 @@
 import { Form, Input, Modal, Select } from "antd";
 import { useEffect } from "react";
-import type { Company, User } from "./types";
+import type { Company, User, WorkGroup } from "./types";
 
 interface Role {
   id: string;
@@ -14,6 +14,7 @@ interface Props {
   loading: boolean;
   editingUser: User | null;
   companies: Company[];
+  workGroups: WorkGroup[];
   roles: Role[];
   onCancel: () => void;
   onSubmit: (values: any) => void;
@@ -24,6 +25,7 @@ export default function UserModal({
   loading,
   editingUser,
   companies,
+  workGroups,
   roles,
   onCancel,
   onSubmit,
@@ -37,6 +39,7 @@ export default function UserModal({
           name: editingUser.name,
           username: editingUser.username,
           companyId: editingUser.companyId,
+          workGroupId: editingUser.workGroupId,
           roleId: editingUser.roleId,
           status: editingUser.status,
         });
@@ -44,6 +47,7 @@ export default function UserModal({
         form.resetFields();
         form.setFieldsValue({
           roleId: null,
+          workGroupId: null,
           status: "ACTIVE",
         });
       }
@@ -116,6 +120,20 @@ export default function UserModal({
             options={companies.map((company) => ({
               label: company.name,
               value: company.id,
+            }))}
+          />
+        </Form.Item>
+
+        <Form.Item
+          label="Team"
+          name="workGroupId"
+          rules={[{ required: true, message: "Please select team" }]}
+        >
+          <Select
+            placeholder="Select team"
+            options={workGroups.map((group) => ({
+              label: group.name,
+              value: group.id,
             }))}
           />
         </Form.Item>

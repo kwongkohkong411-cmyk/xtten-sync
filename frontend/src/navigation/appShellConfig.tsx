@@ -109,7 +109,7 @@ const APP_SHELL_SECTIONS: AppSection[] = [
     children: [
       {
         path: "/attendance/records",
-        label: "Clock In / Out Records",
+        label: "Attendance Records",
         required: "attendance:view",
         element: <Attendance />,
       },
@@ -121,7 +121,7 @@ const APP_SHELL_SECTIONS: AppSection[] = [
       },
       {
         path: "/attendance/work-hours",
-        label: "Work Hours Report",
+        label: "Attendance Records",
         required: "attendance:view",
         element: <Attendance />,
       },

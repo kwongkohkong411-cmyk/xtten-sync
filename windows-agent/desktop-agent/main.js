@@ -7,6 +7,14 @@ const { fork, spawn } = require('node:child_process');
 
 const FALLBACK_API_BASE = process.env.ACTIVITY_API_BASE_URL || 'http://localhost:3000';
 
+function resolveAppIconPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'icons', 'app.ico');
+  }
+
+  return path.join(__dirname, 'build', 'app.ico');
+}
+
 function loadAppConfig() {
   const configPath = path.join(__dirname, 'config.json');
   try {
@@ -402,6 +410,15 @@ function applyDownloadedUpdate() {
 }
 
 function scheduleAutoUpdateChecks() {
+  const state = readState();
+  if (state.settings?.autoUpdate === false) {
+    if (updateTimer) {
+      clearInterval(updateTimer);
+      updateTimer = null;
+    }
+    return;
+  }
+
   if (updateTimer) {
     clearInterval(updateTimer);
     updateTimer = null;
@@ -877,14 +894,63 @@ async function loginAndBind({ account, password, apiBaseUrl }) {
   return authState;
 }
 
+async function requestApi(path, { method = 'GET', query, body, headers = {} } = {}) {
+  const state = readState();
+  const authState = state.auth;
+
+  if (!authState?.token) {
+    throw new Error('Not authenticated');
+  }
+
+  const targetBase = (authState.apiBaseUrl || DEFAULT_API_BASE).replace(/\/$/, '');
+  const url = new URL(path, `${targetBase}/`);
+  if (query && typeof query === 'object') {
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || value === '') continue;
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  const response = await fetch(url.toString(), {
+    method,
+    headers: {
+      Authorization: `Bearer ${authState.token}`,
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...headers,
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  const payload = isJson ? await response.json().catch(() => null) : await response.text();
+
+  if (!response.ok) {
+    const message = typeof payload === 'string'
+      ? payload
+      : payload?.message || payload?.error || `Request failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    data: payload,
+  };
+}
+
 function ensureWindow() {
   if (mainWindow) return mainWindow;
 
   mainWindow = new BrowserWindow({
-    width: 420,
-    height: 620,
+    width: 1440,
+    height: 960,
+    minWidth: 1280,
+    minHeight: 860,
     show: false,
     autoHideMenuBar: true,
+    title: 'XTTEN Agent',
+    icon: resolveAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -951,7 +1017,7 @@ function createTray() {
     tray.setContextMenu(buildTrayMenu());
     return;
   }
-  const icon = nativeImage.createFromPath(process.execPath);
+  const icon = nativeImage.createFromPath(resolveAppIconPath());
   tray = new Tray(icon);
   tray.setToolTip('XTTEN Agent');
   tray.setContextMenu(buildTrayMenu());
@@ -978,6 +1044,10 @@ function getPublicState() {
           boundAt: state.auth.boundAt,
         }
       : null,
+    settings: state.settings || {
+      language: 'en',
+      autoUpdate: true,
+    },
     running: Boolean(agentProcess),
     autoStart: app.getLoginItemSettings().openAtLogin,
     defaultApiBaseUrl: DEFAULT_API_BASE,
@@ -1036,6 +1106,27 @@ ipcMain.handle('app:auto-start', async (_event, enabled) => {
   return { ok: true, autoStart: app.getLoginItemSettings().openAtLogin };
 });
 
+ipcMain.handle('app:settings', async (_event, nextSettings) => {
+  const current = readState();
+  const settings = {
+    ...(current.settings || {}),
+    ...(nextSettings || {}),
+  };
+  writeState({ settings });
+  scheduleAutoUpdateChecks();
+  return { ok: true, settings };
+});
+
+ipcMain.handle('api:request', async (_event, payload) => requestApi(
+  payload?.path || '/',
+  {
+    method: payload?.method,
+    query: payload?.query,
+    body: payload?.body,
+    headers: payload?.headers,
+  },
+));
+
 ipcMain.handle('update:check', async () => {
   const result = await checkForUpdates({ silent: false });
   return {
@@ -1050,6 +1141,7 @@ ipcMain.handle('update:apply', async () => {
 });
 
 app.whenReady().then(() => {
+  app.setAppUserModelId('com.xtten.agent');
   const hiddenStart = process.argv.includes('--hidden');
   ensureWindow();
 

@@ -3,6 +3,12 @@ export interface Company {
   name: string;
 }
 
+export interface WorkGroup {
+  id: string;
+  name: string;
+  code?: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -17,4 +23,6 @@ export interface User {
   status: string;
   companyId?: string | null;
   company?: Company | null;
+  workGroupId?: string | null;
+  workGroup?: WorkGroup | null;
 }

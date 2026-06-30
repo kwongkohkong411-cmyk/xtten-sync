@@ -245,7 +245,6 @@ export class ActivityController {
     );
   }
 
-  @RequirePermission('activity:manage')
   @Post('screenshots')
   uploadActivityScreenshot(
     @Req() req: RequestWithUser,

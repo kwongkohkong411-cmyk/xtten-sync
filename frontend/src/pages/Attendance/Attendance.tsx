@@ -27,7 +27,7 @@ const { Text } = Typography;
 const { RangePicker } = DatePicker;
 
 const ATTENDANCE_TABS = [
-  { key: "records", label: "Clock In / Out Records", path: "/attendance/records" },
+  { key: "records", label: "Attendance Records", path: "/attendance/records" },
   { key: "calendar", label: "Attendance Calendar", path: "/attendance/calendar" },
   { key: "report", label: "Work Hours Report", path: "/attendance/work-hours" },
   { key: "summary", label: "Attendance Summary", path: "/attendance/summary" },
@@ -254,9 +254,9 @@ export default function Attendance() {
   const [employeeFilter, setEmployeeFilter] = useState<string | undefined>(undefined);
   const [teamFilter, setTeamFilter] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState("");
-  const [recordsRange, setRecordsRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf("month"), dayjs().endOf("day")]);
-  const [reportRange, setReportRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf("month"), dayjs().endOf("day")]);
-  const [summaryRange, setSummaryRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf("month"), dayjs().endOf("day")]);
+  const [recordsRange, setRecordsRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf("month"), dayjs().endOf("month")]);
+  const [reportRange, setReportRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf("month"), dayjs().endOf("month")]);
+  const [summaryRange, setSummaryRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf("month"), dayjs().endOf("month")]);
   const [calendarMonth, setCalendarMonth] = useState<Dayjs>(dayjs().startOf("month"));
 
   useEffect(() => {
@@ -272,7 +272,11 @@ export default function Attendance() {
     return recordsRange;
   }, [activeView, calendarMonth, recordsRange, reportRange, summaryRange]);
 
-  const effectiveEmployeeId = selfOnly ? currentEmployeeId || undefined : employeeFilter;
+  const effectiveEmployeeId = selfOnly
+    ? currentEmployeeId || undefined
+    : activeView === "records"
+      ? employeeFilter || currentEmployeeId || undefined
+      : employeeFilter;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -617,7 +621,7 @@ export default function Attendance() {
             allowClear
             style={{ width: 260 }}
             placeholder="Employee"
-            value={employeeFilter}
+            value={activeView === "records" ? employeeFilter || currentEmployeeId || undefined : employeeFilter}
             onChange={setEmployeeFilter}
             options={employeeOptions}
             showSearch
@@ -634,12 +638,12 @@ export default function Attendance() {
       />
       <Button
         onClick={() => {
-          setEmployeeFilter(selfOnly ? currentEmployeeId || undefined : undefined);
+          setEmployeeFilter(activeView === "records" ? currentEmployeeId || undefined : undefined);
           setTeamFilter(undefined);
           setSearchText("");
-          setRecordsRange([dayjs().startOf("month"), dayjs().endOf("day")]);
-          setReportRange([dayjs().startOf("month"), dayjs().endOf("day")]);
-          setSummaryRange([dayjs().startOf("month"), dayjs().endOf("day")]);
+          setRecordsRange([dayjs().startOf("month"), dayjs().endOf("month")]);
+          setReportRange([dayjs().startOf("month"), dayjs().endOf("month")]);
+          setSummaryRange([dayjs().startOf("month"), dayjs().endOf("month")]);
           setCalendarMonth(dayjs().startOf("month"));
         }}
       >
@@ -690,7 +694,7 @@ export default function Attendance() {
       )}
 
       {activeView === "records" && (
-        <Card title="Clock In / Out Records">
+        <Card title="Attendance Records">
           <Table<AttendanceRow> rowKey="id" loading={loading} dataSource={visibleRows} pagination={{ pageSize: 10 }} columns={recordsColumns as never} />
         </Card>
       )}

@@ -2,6 +2,7 @@ export interface CurrentUser {
   id: string;
   username: string;
   email: string;
+  name?: string | null;
   role: string;
   roleId?: string | null;
   permissions?: string[];
@@ -12,6 +13,9 @@ export interface CurrentUser {
     logo?: string | null;
   } | null;
   employeeId?: string | null;
+  teamName?: string | null;
+  workGroupName?: string | null;
+  departmentName?: string | null;
 }
 
 const SUPER_ADMIN_OWNER_USERNAME = 'sn888xt';

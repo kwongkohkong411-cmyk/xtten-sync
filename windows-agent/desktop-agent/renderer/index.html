@@ -7,59 +7,100 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="app">
-      <h1>XTTEN Agent</h1>
-      <p class="sub">Employee desktop collector (Windows MVP)</p>
+    <div class="bg-orb bg-orb-left"></div>
+    <div class="bg-orb bg-orb-right"></div>
 
-      <div id="loggedInBanner" class="banner hidden">✓ Logged in</div>
+    <main class="app-shell">
+      <section id="loginScreen" class="login-screen">
+        <article class="hero-card card-surface">
+          <div class="brand-lockup">
+            <img class="brand-logo" src="./assets/xtten-logo.svg" alt="XTTEN" />
+            <div>
+              <p class="eyebrow">XTTEN Agent</p>
+              <h1>XTTEN employee companion</h1>
+            </div>
+          </div>
+          <p class="hero-copy">
+            Attendance, leave, reporting, and settings in one polished desktop experience.
+          </p>
+          <div class="hero-points">
+            <span>Company and team identity</span>
+            <span>Only agent attendance actions</span>
+            <span>Work reports and updates</span>
+          </div>
+        </article>
 
-      <section id="loginPanel" class="panel">
-        <h2>Login and Bind</h2>
-        <label>
-          API Base URL
-          <input id="apiBaseUrl" type="text" placeholder="http://localhost:3000" />
-        </label>
-        <label>
-          Employee account
-          <input id="account" type="text" placeholder="email or username" />
-        </label>
-        <label>
-          Password
-          <input id="password" type="password" placeholder="password" />
-        </label>
-        <button id="loginBtn">Login and Start</button>
+        <article class="auth-card card-surface">
+          <div class="section-head compact">
+            <div>
+              <p class="eyebrow">Sign in</p>
+              <h2>Connect your employee account</h2>
+            </div>
+            <div id="loginStatusBadge" class="status-pill neutral">Offline</div>
+          </div>
+
+          <form id="loginForm" class="form-grid">
+            <label>
+              API Base URL
+              <input id="apiBaseUrl" type="text" placeholder="http://localhost:3000" />
+            </label>
+            <label>
+              Username
+              <input id="account" type="text" placeholder="username" />
+            </label>
+            <label>
+              Password
+              <input id="password" type="password" placeholder="password" />
+            </label>
+            <button id="loginBtn" class="primary-action" type="submit">Login to Desktop</button>
+          </form>
+
+          <p id="loginNotice" class="notice"></p>
+        </article>
       </section>
 
-      <section class="panel">
-        <h2>Status</h2>
-        <div id="statusText" class="status">Loading...</div>
-        <div class="actions">
-          <button id="startBtn" class="secondary">Start Collector</button>
-          <button id="stopBtn" class="secondary">Stop Collector</button>
-          <button id="logoutBtn" class="danger">Logout</button>
+      <section id="workspaceScreen" class="workspace hidden">
+        <header class="topbar card-surface">
+          <div class="topbar-brand">
+            <img class="topbar-logo" src="./assets/xtten-logo.svg" alt="XTTEN" />
+            <div>
+              <p class="eyebrow">XTTEN Agent</p>
+              <h2 id="workspaceTitle">Attendance</h2>
+            </div>
+          </div>
+
+          <div class="topbar-meta">
+            <div class="meta-chip"><span>Username</span><strong id="metaEmployee">-</strong></div>
+            <div class="meta-chip"><span>Company</span><strong id="metaCompany">-</strong></div>
+            <div class="meta-chip"><span>Team</span><strong id="metaTeam">-</strong></div>
+            <div class="meta-chip"><span>Date Time</span><strong id="metaClock">--</strong></div>
+            <div class="status-pill" id="metaStatusPill">Not Clocked In</div>
+          </div>
+        </header>
+
+        <div id="workspaceNotice" class="workspace-notice card-surface hidden"></div>
+
+        <div class="workspace-layout">
+          <aside class="sidebar card-surface">
+            <nav id="mainNav" class="nav-stack">
+              <button class="nav-item" data-tab="attendance" type="button">Attendance</button>
+              <button class="nav-item" data-tab="leave" type="button">Leave</button>
+              <button class="nav-item" data-tab="reports" type="button">Work Report</button>
+              <button class="nav-item" data-tab="settings" type="button">Settings</button>
+              <button class="nav-item danger" data-action="sign-out" type="button">Sign Out</button>
+            </nav>
+          </aside>
+
+          <section class="workspace-content">
+            <section class="view-pane" data-view="attendance"><div id="attendanceRoot"></div></section>
+            <section class="view-pane" data-view="leave"><div id="leaveRoot"></div></section>
+            <section class="view-pane" data-view="reports"><div id="reportsRoot"></div></section>
+            <section class="view-pane" data-view="settings"><div id="settingsRoot"></div></section>
+          </section>
         </div>
-        <label class="inline">
-          <input id="autoStart" type="checkbox" />
-          Launch at startup
-        </label>
       </section>
-
-      <section class="panel">
-        <h2>Diagnostics</h2>
-        <div id="diagText" class="status">Loading diagnostics...</div>
-      </section>
-
-      <section class="panel">
-        <h2>Updates</h2>
-        <div id="updateText" class="status">Checking...</div>
-        <div class="actions" style="margin-top: 8px;">
-          <button id="checkUpdateBtn" class="secondary">Check for Updates</button>
-          <button id="applyUpdateBtn">Install Downloaded Update</button>
-        </div>
-      </section>
-
-      <p id="notice" class="notice"></p>
     </main>
+
     <script src="./renderer.js"></script>
   </body>
 </html>

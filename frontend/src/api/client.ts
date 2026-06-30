@@ -1,11 +1,11 @@
 import axios from "axios";
 
 const resolveApiBaseUrl = () => {
-  const envBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
-  if (envBaseUrl) return envBaseUrl;
-
   const runtimeBaseUrl = localStorage.getItem("xtten_api_base_url");
   if (runtimeBaseUrl) return runtimeBaseUrl;
+
+  const envBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+  if (envBaseUrl) return envBaseUrl;
 
   const protocol = window.location.protocol === "https:" ? "https" : "http";
 

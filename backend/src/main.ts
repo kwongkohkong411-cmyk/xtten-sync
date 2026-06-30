@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const port = Number(process.env.PORT || 3000);
 
   const allowedOrigin = (origin?: string) => {
     if (!origin) return true;
@@ -54,6 +55,6 @@ async function bootstrap() {
   }
   app.use('/uploads', express.static(uploadsRoot));
 
-  await app.listen(3000, '0.0.0.0');
+  await app.listen(port, '0.0.0.0');
 }
 void bootstrap();

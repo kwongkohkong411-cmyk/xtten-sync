@@ -1,0 +1,36 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="20" y1="16" x2="236" y2="244" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#30116D"/>
+      <stop offset="1" stop-color="#081B3E"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="24" y1="20" x2="232" y2="236" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BB5CFF"/>
+      <stop offset="1" stop-color="#3CF7F3"/>
+    </linearGradient>
+    <linearGradient id="x1" x1="70" y1="70" x2="190" y2="190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#49F4FF"/>
+      <stop offset="1" stop-color="#8C39FF"/>
+    </linearGradient>
+    <linearGradient id="x2" x1="190" y1="70" x2="70" y2="190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#49F4FF"/>
+      <stop offset="1" stop-color="#D83CFF"/>
+    </linearGradient>
+    <filter id="glow" x="0" y="0" width="256" height="256" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+
+  <rect x="12" y="12" width="232" height="232" rx="64" fill="url(#bg)"/>
+  <rect x="12" y="12" width="232" height="232" rx="64" stroke="url(#stroke)" stroke-width="8"/>
+
+  <g filter="url(#glow)">
+    <path d="M76 64H110L146 108L110 152H76L112 108L76 64Z" fill="url(#x1)"/>
+    <path d="M180 64H146L110 108L146 152H180L144 108L180 64Z" fill="url(#x2)"/>
+    <path d="M114 120L146 152H114L98 136L114 120Z" fill="#9440FF"/>
+  </g>
+
+  <path d="M76 64H110L146 108L110 152H76L112 108L76 64Z" fill="url(#x1)"/>
+  <path d="M180 64H146L110 108L146 152H180L144 108L180 64Z" fill="url(#x2)"/>
+  <path d="M114 120L146 152H114L98 136L114 120Z" fill="#9440FF"/>
+</svg>

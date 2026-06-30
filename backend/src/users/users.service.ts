@@ -12,6 +12,7 @@ type UserCreateInput = {
   roleId?: string;
   status?: string;
   companyId?: string;
+  workGroupId?: string;
 };
 
 type UserUpdateInput = {
@@ -22,6 +23,7 @@ type UserUpdateInput = {
   roleId?: string;
   status?: string;
   companyId?: string;
+  workGroupId?: string;
 };
 
 type RoleAssignment = {
