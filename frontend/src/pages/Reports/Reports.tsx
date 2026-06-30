@@ -186,6 +186,8 @@ export default function Reports() {
         'Missing',
         'Attendance %',
         'Work Hours',
+        'Late (min)',
+        'Early Leave (min)',
         'Overtime',
       ];
       const csvLines = [
@@ -205,6 +207,8 @@ export default function Reports() {
             row.missing,
             row.attendanceRate,
             row.totalHoursDecimal,
+            row.totalLateMinutes ?? 0,
+            row.totalEarlyLeaveMinutes ?? 0,
             row.otHoursDecimal,
           ]
             .map((value) => toCsvCell(value))
@@ -455,9 +459,20 @@ export default function Reports() {
                   render: (value: number | null) => (value != null ? Number(value).toFixed(2) : '-'),
                 },
                 {
-                  title: 'Late',
-                  dataIndex: 'status',
-                  render: (value: string) => (value === 'LATE' ? 'Yes' : value ? 'No' : '--'),
+                  title: 'Late (min)',
+                  dataIndex: 'lateMinutes',
+                  render: (value: number, record: any) =>
+                    record.status === 'LATE' && value > 0
+                      ? <Tag color='orange'>{value} min</Tag>
+                      : <span style={{ color: '#aaa' }}>-</span>,
+                },
+                {
+                  title: 'Early Leave (min)',
+                  dataIndex: 'earlyLeaveMinutes',
+                  render: (value: number) =>
+                    value > 0
+                      ? <Tag color='gold'>{value} min</Tag>
+                      : <span style={{ color: '#aaa' }}>-</span>,
                 },
                 {
                   title: 'Overtime',
@@ -541,6 +556,22 @@ export default function Reports() {
                   title: 'Work Hours',
                   dataIndex: 'totalHoursDecimal',
                   render: (value: number) => Number(value || 0).toFixed(2),
+                },
+                {
+                  title: 'Late (min)',
+                  dataIndex: 'totalLateMinutes',
+                  render: (value: number) =>
+                    value > 0
+                      ? <Tag color='orange'>{value} min</Tag>
+                      : <span style={{ color: '#aaa' }}>0</span>,
+                },
+                {
+                  title: 'Early Leave (min)',
+                  dataIndex: 'totalEarlyLeaveMinutes',
+                  render: (value: number) =>
+                    value > 0
+                      ? <Tag color='gold'>{value} min</Tag>
+                      : <span style={{ color: '#aaa' }}>0</span>,
                 },
                 {
                   title: 'Overtime',

@@ -299,6 +299,9 @@ model Attendance {
 
   totalHours Decimal? @db.Decimal(5, 2)
 
+  lateMinutes      Int @default(0)
+  earlyLeaveMinutes Int @default(0)
+
   status String @default("PRESENT")
 
   createdAt DateTime @default(now())

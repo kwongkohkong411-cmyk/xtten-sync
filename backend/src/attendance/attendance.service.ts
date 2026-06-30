@@ -919,6 +919,7 @@ export class AttendanceService {
         date: workDate,
         checkIn: checkInAt,
         status: isLate ? 'LATE' : 'PRESENT',
+        lateMinutes,
       },
     });
 
@@ -1030,6 +1031,8 @@ export class AttendanceService {
         checkOut: now,
         totalHours: worked.totalHours,
         status: finalStatus,
+        lateMinutes,
+        earlyLeaveMinutes,
       },
     });
 

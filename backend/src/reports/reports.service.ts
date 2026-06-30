@@ -28,6 +28,9 @@ type AttendanceSnapshot = {
   breakOut?: Date;
   breakIn?: Date;
   totalHours?: number;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
+  attendanceDbStatus?: string; // 'LATE' | 'PRESENT' | 'EARLY_LEAVE' stored in Attendance.status
   status: AttendanceStatus;
   anomalyCount: number;
 };
@@ -49,6 +52,8 @@ type EmployeeStatusRow = {
   totalHoursDecimal?: number;
   totalHoursDuration?: string;
   otHoursDecimal?: number;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
 };
 
 type DailyDetailItem = {
@@ -322,6 +327,7 @@ export class ReportsService extends BaseRbacService {
   private calculateAttendanceStatus(params: {
     checkIn?: Date;
     checkOut?: Date;
+    attendanceDbStatus?: string; // stored in Attendance.status: 'LATE'|'PRESENT'|'EARLY_LEAVE'
     isLeave: boolean;
     isHoliday: boolean;
     workDate: Date;
@@ -344,6 +350,12 @@ export class ReportsService extends BaseRbacService {
       return AttendanceStatus.ABSENT;
     }
 
+    // Use stored DB status (set by attendance service using actual shift rules)
+    if (params.attendanceDbStatus === 'LATE') return AttendanceStatus.LATE;
+    if (params.attendanceDbStatus === 'EARLY_LEAVE') return AttendanceStatus.LATE;
+    if (params.attendanceDbStatus === 'PRESENT') return AttendanceStatus.ON_TIME;
+
+    // Fallback: use default late threshold
     if (
       params.checkIn.getTime() >
       this.getLateThreshold(params.workDate).getTime()
@@ -543,16 +555,19 @@ export class ReportsService extends BaseRbacService {
     companyId: string | undefined,
     start: Date,
     end: Date,
-    employeeIds: string[],
+    employees: Array<{ id: string; companyId: string; workGroup?: { name: string } | null }> & { workGroupId?: string }[],
   ) {
-    if (!employeeIds.length)
+    if (!employees.length)
       return new Map<
         string,
         { baseHours: number; overtimeAfterMinutes: number }
       >();
+
+    const employeeIds = employees.map((e) => e.id);
     const months = this.monthKeysBetween(start, end);
 
-    const rows = await this.prisma.roster.findMany({
+    // Employee-specific rosters
+    const empRosters = await this.prisma.roster.findMany({
       where: {
         ...(companyId ? { companyId } : {}),
         employeeId: { in: employeeIds },
@@ -562,27 +577,64 @@ export class ReportsService extends BaseRbacService {
         employeeId: true,
         month: true,
         shift: {
-          select: {
-            startTime: true,
-            endTime: true,
-            crossDay: true,
-            breakMinutes: true,
-            overtimeAfter: true,
-          },
+          select: { startTime: true, endTime: true, crossDay: true, breakMinutes: true, overtimeAfter: true },
         },
       },
     });
 
-    const map = new Map<
-      string,
-      { baseHours: number; overtimeAfterMinutes: number }
-    >();
-    for (const row of rows) {
+    // Team-level rosters (employeeId = null, matched by workGroupId)
+    const workGroupIds = Array.from(
+      new Set((employees as any[]).map((e: any) => e.workGroupId).filter(Boolean))
+    );
+    const teamRosters = workGroupIds.length
+      ? await this.prisma.roster.findMany({
+          where: {
+            ...(companyId ? { companyId } : {}),
+            employeeId: null,
+            workGroupId: { in: workGroupIds as string[] },
+            month: { in: months },
+          },
+          select: {
+            workGroupId: true,
+            month: true,
+            shift: {
+              select: { startTime: true, endTime: true, crossDay: true, breakMinutes: true, overtimeAfter: true },
+            },
+          },
+        })
+      : [];
+
+    // Build lookup: workGroupId:month → shift info
+    const teamShiftMap = new Map<string, typeof teamRosters[0]['shift']>();
+    for (const row of teamRosters) {
+      teamShiftMap.set(`${row.workGroupId}:${row.month}`, row.shift);
+    }
+
+    const map = new Map<string, { baseHours: number; overtimeAfterMinutes: number }>();
+
+    // Employee-specific rosters take priority
+    for (const row of empRosters) {
       const baseHours = this.computeShiftPaidHours(row.shift);
       map.set(`${row.employeeId}:${row.month}`, {
         baseHours,
         overtimeAfterMinutes: Number(row.shift?.overtimeAfter || 0),
       });
+    }
+
+    // For employees with no personal roster, fall back to team roster
+    for (const employee of employees as any[]) {
+      for (const month of months) {
+        const empKey = `${employee.id}:${month}`;
+        if (!map.has(empKey) && employee.workGroupId) {
+          const teamShift = teamShiftMap.get(`${employee.workGroupId}:${month}`);
+          if (teamShift) {
+            map.set(empKey, {
+              baseHours: this.computeShiftPaidHours(teamShift),
+              overtimeAfterMinutes: Number(teamShift?.overtimeAfter || 0),
+            });
+          }
+        }
+      }
     }
 
     return map;
@@ -648,6 +700,45 @@ export class ReportsService extends BaseRbacService {
     start: Date,
     end: Date,
   ) {
+    // Primary: read from Attendance table directly (has lateMinutes, earlyLeaveMinutes stored)
+    const attendanceRows = await this.prisma.attendance.findMany({
+      where: {
+        ...(companyId ? { companyId } : {}),
+        date: { gte: start, lte: end },
+      },
+      select: {
+        id: true,
+        employeeId: true,
+        date: true,
+        checkIn: true,
+        checkOut: true,
+        totalHours: true,
+        status: true,
+        lateMinutes: true,
+        earlyLeaveMinutes: true,
+      },
+    });
+
+    // Build snapshots from attendance records
+    const attendanceMap = new Map<string, AttendanceSnapshot>();
+    for (const row of attendanceRows) {
+      const workDate = this.dateKey(this.dayStart(row.date));
+      const key = `${row.employeeId}:${workDate}`;
+      attendanceMap.set(key, {
+        employeeId: row.employeeId,
+        workDate,
+        checkIn: row.checkIn ?? undefined,
+        checkOut: row.checkOut ?? undefined,
+        totalHours: row.totalHours ? Number(row.totalHours) : undefined,
+        lateMinutes: row.lateMinutes ?? 0,
+        earlyLeaveMinutes: row.earlyLeaveMinutes ?? 0,
+        attendanceDbStatus: row.status,
+        status: AttendanceStatus.ON_TIME, // will be resolved in buildEmployeeStatusRows
+        anomalyCount: (row.checkIn && !row.checkOut ? 1 : 0),
+      });
+    }
+
+    // Supplement with break times from audit log events
     const logs = await this.prisma.tenantAuditLog.findMany({
       where: {
         ...(companyId ? { companyId } : {}),
@@ -655,28 +746,15 @@ export class ReportsService extends BaseRbacService {
         entityType: 'Employee',
         action: {
           in: [
-            EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_CHECKED_IN,
             EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_BREAK_OUT,
             EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_BREAK_IN,
-            EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_CHECKED_OUT,
-            EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_AUTO_CHECKED_OUT,
           ],
         },
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
+        createdAt: { gte: start, lte: end },
       },
       orderBy: { createdAt: 'asc' },
-      select: {
-        entityId: true,
-        action: true,
-        createdAt: true,
-        afterData: true,
-      },
+      select: { entityId: true, action: true, createdAt: true, afterData: true },
     });
-
-    const map = new Map<string, AttendanceSnapshot>();
 
     for (const log of logs) {
       const afterData = (log.afterData || {}) as Record<string, unknown>;
@@ -685,50 +763,19 @@ export class ReportsService extends BaseRbacService {
         this.dayStart(this.safeDate(workDateRaw, log.createdAt)),
       );
       const key = `${log.entityId}:${workDate}`;
-
-      const snapshot =
-        map.get(key) ||
-        ({
-          employeeId: log.entityId,
-          workDate,
-          status: AttendanceStatus.ON_TIME,
-          anomalyCount: 0,
-        } as AttendanceSnapshot);
-
-      if (log.action === EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_CHECKED_IN) {
-        snapshot.checkIn = this.safeDate(afterData.checkIn, log.createdAt);
-      }
+      const snapshot = attendanceMap.get(key);
+      if (!snapshot) continue;
 
       if (log.action === EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_BREAK_OUT) {
         snapshot.breakOut = this.safeDate(afterData.breakStart, log.createdAt);
       }
-
       if (log.action === EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_BREAK_IN) {
         snapshot.breakIn = this.safeDate(afterData.breakEnd, log.createdAt);
       }
-
-      if (
-        log.action === EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_CHECKED_OUT ||
-        log.action === EMPLOYEE_EVENT_ACTIONS.ATTENDANCE_AUTO_CHECKED_OUT
-      ) {
-        snapshot.checkOut = this.safeDate(afterData.checkOut, log.createdAt);
-        snapshot.totalHours = this.safeNumber(afterData.totalHours);
-      }
-
-      map.set(key, snapshot);
+      attendanceMap.set(key, snapshot);
     }
 
-    const snapshots = Array.from(map.values()).map((item) => {
-      const anomalyCount =
-        (item.checkIn && !item.checkOut ? 1 : 0) +
-        (item.breakOut && !item.breakIn ? 1 : 0);
-      return {
-        ...item,
-        anomalyCount,
-      };
-    });
-
-    return snapshots;
+    return Array.from(attendanceMap.values());
   }
 
   async getDailyReport(
@@ -786,6 +833,8 @@ export class ReportsService extends BaseRbacService {
         totalHoursDecimal: row.totalHoursDecimal,
         totalHoursDuration: row.totalHoursDuration,
         otHoursDecimal: row.otHoursDecimal,
+        lateMinutes: row.lateMinutes ?? 0,
+        earlyLeaveMinutes: row.earlyLeaveMinutes ?? 0,
       })),
       attendanceRate: totalEmployees
         ? Number(((present / totalEmployees) * 100).toFixed(2))
@@ -1043,6 +1092,7 @@ export class ReportsService extends BaseRbacService {
         employeeId: string;
         username: string;
         name: string;
+        teamName?: string;
         totalDays: number;
         onTime: number;
         late: number;
@@ -1052,6 +1102,8 @@ export class ReportsService extends BaseRbacService {
         missing: number;
         totalHoursDecimal: number;
         otHoursDecimal: number;
+        totalLateMinutes: number;
+        totalEarlyLeaveMinutes: number;
       }
     >();
 
@@ -1070,6 +1122,8 @@ export class ReportsService extends BaseRbacService {
         missing: 0,
         totalHoursDecimal: 0,
         otHoursDecimal: 0,
+        totalLateMinutes: 0,
+        totalEarlyLeaveMinutes: 0,
       };
 
       current.totalDays += 1;
@@ -1081,6 +1135,8 @@ export class ReportsService extends BaseRbacService {
       if (row.status === AttendanceStatus.MISSING) current.missing += 1;
       current.totalHoursDecimal += Number(row.totalHoursDecimal || 0);
       current.otHoursDecimal += Number(row.otHoursDecimal || 0);
+      current.totalLateMinutes += Number(row.lateMinutes || 0);
+      current.totalEarlyLeaveMinutes += Number(row.earlyLeaveMinutes || 0);
 
       byEmployee.set(row.employeeId, current);
     }
@@ -1153,6 +1209,8 @@ export class ReportsService extends BaseRbacService {
       totalHoursDuration: row.totalHoursDuration || '',
       otHoursDecimal:
         row.otHoursDecimal != null ? row.otHoursDecimal.toFixed(2) : '0.00',
+      lateMinutes: row.lateMinutes ?? 0,
+      earlyLeaveMinutes: row.earlyLeaveMinutes ?? 0,
     }));
   }
 
@@ -1174,11 +1232,12 @@ export class ReportsService extends BaseRbacService {
       end,
       employees,
     );
+    // Pass full employees array (includes workGroupId for team-level roster lookup)
     const overtimeRuleMap = await this.getOvertimeRuleMap(
       companyId,
       start,
       end,
-      employees.map((e) => e.id),
+      employees as any[],
     );
 
     const snapshotMap = new Map(
@@ -1203,6 +1262,7 @@ export class ReportsService extends BaseRbacService {
         const status = this.calculateAttendanceStatus({
           checkIn: snapshot?.checkIn,
           checkOut: snapshot?.checkOut,
+          attendanceDbStatus: snapshot?.attendanceDbStatus,
           isLeave: leaveSet.has(key),
           isHoliday,
           workDate: new Date(cursor),
@@ -1225,6 +1285,8 @@ export class ReportsService extends BaseRbacService {
           totalHoursDecimal: snapshot?.totalHours,
           totalHoursDuration: this.formatHoursDuration(snapshot?.totalHours),
           otHoursDecimal,
+          lateMinutes: snapshot?.lateMinutes ?? 0,
+          earlyLeaveMinutes: snapshot?.earlyLeaveMinutes ?? 0,
         });
       }
 
@@ -1255,6 +1317,8 @@ export class ReportsService extends BaseRbacService {
         'checkOut',
         'totalHoursDecimal',
         'totalHoursDuration',
+        'lateMinutes',
+        'earlyLeaveMinutes',
         'otHoursDecimal',
       ];
       const csv = [
@@ -1272,6 +1336,8 @@ export class ReportsService extends BaseRbacService {
             row.checkOut,
             row.totalHoursDecimal,
             row.totalHoursDuration,
+            row.lateMinutes,
+            row.earlyLeaveMinutes,
             row.otHoursDecimal,
           ]
             .map((value) => this.csvEscape(value))
@@ -1300,6 +1366,8 @@ export class ReportsService extends BaseRbacService {
       { header: 'checkOut', key: 'checkOut', width: 22 },
       { header: 'totalHoursDecimal', key: 'totalHoursDecimal', width: 18 },
       { header: 'totalHoursDuration', key: 'totalHoursDuration', width: 18 },
+      { header: 'lateMinutes', key: 'lateMinutes', width: 14 },
+      { header: 'earlyLeaveMinutes', key: 'earlyLeaveMinutes', width: 18 },
       { header: 'otHoursDecimal', key: 'otHoursDecimal', width: 16 },
     ];
     rows.forEach((row) => sheet.addRow(row));
