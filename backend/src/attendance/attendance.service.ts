@@ -881,12 +881,14 @@ export class AttendanceService {
   // =========================
   // CHECK IN
   // =========================
-  async checkIn(req: AttendanceRequest) {
+  async checkIn(req: AttendanceRequest, overrideClockInAt?: string) {
     const user = this.requireUser(req);
 
     const employee = await this.getEmployee(user.id);
 
-    const checkInAt = new Date();
+    const checkInAt = overrideClockInAt
+      ? new Date(overrideClockInAt)
+      : new Date();
     const schedule = await this.resolveScheduleForDate(
       employee.id,
       employee.companyId,
@@ -966,7 +968,7 @@ export class AttendanceService {
   // =========================
   // CHECK OUT
   // =========================
-  async checkOut(req: AttendanceRequest, id: string) {
+  async checkOut(req: AttendanceRequest, id: string, overrideCheckOutAt?: string) {
     const user = this.requireUser(req);
     const employee = await this.getEmployee(user.id);
 
@@ -990,7 +992,7 @@ export class AttendanceService {
       // Allow check-out, but mark anomaly in timeline computation.
     }
 
-    const now = new Date();
+    const now = overrideCheckOutAt ? new Date(overrideCheckOutAt) : new Date();
     const workDate = this.resolveWorkDate({
       date: record.date,
       checkIn: record.checkIn,

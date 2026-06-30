@@ -6,6 +6,7 @@ import {
   UseGuards,
   Param,
   Query,
+  Body,
 } from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -26,8 +27,11 @@ export class AttendanceController {
   @UseGuards(JwtAuthGuard)
   @RequirePermission('attendance:manage')
   @Post('check-in')
-  checkIn(@Req() req: RequestWithUser) {
-    return this.service.checkIn(req);
+  checkIn(
+    @Req() req: RequestWithUser,
+    @Body() body?: { clockInAt?: string },
+  ) {
+    return this.service.checkIn(req, body?.clockInAt);
   }
 
   // =====================
@@ -36,8 +40,12 @@ export class AttendanceController {
   @UseGuards(JwtAuthGuard)
   @RequirePermission('attendance:manage')
   @Post('check-out/:id')
-  checkOut(@Req() req: RequestWithUser, @Param('id') id: string) {
-    return this.service.checkOut(req, id);
+  checkOut(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Body() body?: { checkOutAt?: string },
+  ) {
+    return this.service.checkOut(req, id, body?.checkOutAt);
   }
 
   @UseGuards(JwtAuthGuard)
