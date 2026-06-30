@@ -3,8 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type RosterCreateInput = {
   companyId: string;
-  employeeId: string;
-  workGroupId: string;
+  employeeId?: string;
+  workGroupIds: string[]; // Support multiple teams
   shiftId: string;
   month: string;
   status?: string;
@@ -13,7 +13,7 @@ type RosterCreateInput = {
 type RosterUpdateInput = {
   companyId?: string;
   employeeId?: string;
-  workGroupId?: string;
+  workGroupIds?: string[]; // Support multiple teams
   shiftId?: string;
   month?: string;
   status?: string;
@@ -96,58 +96,110 @@ export class RostersService {
   }
 
   // =========================
-  // CREATE (FIXED FINAL)
+  // CREATE - Support multiple workGroupIds
   // =========================
   async create(body: RosterCreateInput) {
     if (!body.companyId) {
       throw new Error('companyId is missing');
     }
 
-    if (!body.employeeId) {
-      throw new Error('employeeId is missing');
-    }
-
-    if (!body.workGroupId) {
-      throw new Error('workGroupId is missing');
+    if (!body.workGroupIds || body.workGroupIds.length === 0) {
+      throw new Error('workGroupIds is missing or empty');
     }
 
     if (!body.shiftId) {
       throw new Error('shiftId is missing');
     }
 
-    return this.prisma.roster.create({
-      data: {
-        // ✅ MUST use STRING month (NOT date)
-        month: body.month, // e.g. "2026-07"
+    // Create a roster record for each workGroupId
+    const createdRosters = await Promise.all(
+      body.workGroupIds.map((workGroupId) =>
+        this.prisma.roster.create({
+          data: {
+            month: body.month,
+            companyId: body.companyId,
+            ...(body.employeeId ? { employeeId: body.employeeId } : {}),
+            workGroupId,
+            shiftId: body.shiftId,
+            status: body.status ?? 'ASSIGNED',
+          },
+          include: {
+            company: true,
+            workGroup: true,
+            shift: true,
+            employee: true,
+          },
+        })
+      )
+    );
 
-        // ✅ relations MUST use IDs ONLY
-        companyId: body.companyId,
-        employeeId: body.employeeId,
-        workGroupId: body.workGroupId,
-        shiftId: body.shiftId,
-
-        status: body.status ?? 'ASSIGNED',
-      },
-    });
+    // Return array of created rosters
+    return createdRosters;
   }
 
   // =========================
-  // UPDATE (FIXED FINAL)
+  // UPDATE - Support multiple workGroupIds
   // =========================
   async update(id: string, body: RosterUpdateInput) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
 
+    // If workGroupIds is provided, delete current roster and recreate with new workGroupIds
+    if (body.workGroupIds !== undefined) {
+      // First, find all rosters for this employee/month combination
+      const rosterFamily = await this.prisma.roster.findMany({
+        where: {
+          employeeId: existing.employeeId,
+          month: body.month ?? existing.month,
+        },
+      });
+
+      // Delete all rosters in this family
+      await Promise.all(
+        rosterFamily.map((roster) =>
+          this.prisma.roster.delete({ where: { id: roster.id } })
+        )
+      );
+
+      // Create new rosters with updated workGroupIds
+      const createdRosters = await Promise.all(
+        body.workGroupIds.map((workGroupId) =>
+          this.prisma.roster.create({
+            data: {
+              month: body.month ?? existing.month,
+              companyId: body.companyId ?? existing.companyId,
+              employeeId: body.employeeId ?? existing.employeeId,
+              workGroupId,
+              shiftId: body.shiftId ?? existing.shiftId,
+              status: body.status ?? existing.status,
+            },
+            include: {
+              company: true,
+              workGroup: true,
+              shift: true,
+              employee: true,
+            },
+          })
+        )
+      );
+
+      return createdRosters;
+    }
+
+    // If workGroupIds is not provided, update the existing roster
     return this.prisma.roster.update({
       where: { id },
       data: {
         month: body.month ?? undefined,
-
         companyId: body.companyId ?? undefined,
         employeeId: body.employeeId ?? undefined,
-        workGroupId: body.workGroupId ?? undefined,
         shiftId: body.shiftId ?? undefined,
-
         status: body.status ?? undefined,
+      },
+      include: {
+        company: true,
+        workGroup: true,
+        shift: true,
+        employee: true,
       },
     });
   }

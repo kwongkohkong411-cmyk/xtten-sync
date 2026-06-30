@@ -127,10 +127,10 @@ export default function Rosters() {
 
     form.setFieldsValue({
       companyId: record.companyId,
-      workGroupId: record.workGroupId,
+      workGroupIds: record.workGroupId ? [record.workGroupId] : [],
+      month: record.month ? dayjs(record.month, "YYYY-MM") : dayjs(),
       shiftId: record.shiftId,
       employeeId: record.employeeId,
-      month: record.month ? dayjs(record.month, "YYYY-MM") : dayjs(),
     });
 
     setModalOpen(true);
@@ -145,9 +145,9 @@ export default function Rosters() {
 
       const payload = {
         companyId: values.companyId,
-        workGroupId: values.workGroupId,
+        workGroupIds: values.workGroupIds || [],
         shiftId: values.shiftId,
-        employeeId: values.employeeId,
+        employeeId: values.employeeId || undefined,
         month: values.month.format("YYYY-MM"),
       };
 
@@ -254,8 +254,9 @@ export default function Rosters() {
       >
         <Form form={form} layout="vertical">
 
-          <Form.Item name="companyId" label="Company" rules={[{ required: true }]}>
+          <Form.Item name="companyId" label="Company" rules={[{ required: true, message: "Please select company" }]}>
             <Select
+              placeholder="Select company"
               options={companies.map((c) => ({
                 label: c.name,
                 value: c.id,
@@ -263,22 +264,10 @@ export default function Rosters() {
             />
           </Form.Item>
 
-          <Form.Item name="employeeId" label="Employee" rules={[{ required: true }]}>
+          <Form.Item name="workGroupIds" label="Team" rules={[{ required: true, message: "Please select at least one team" }]}>
             <Select
-              placeholder="Select employee"
-              options={employees.map((e) => ({
-                label: e.name,
-                value: e.id,
-              }))}
-            />
-          </Form.Item>
-
-          <Form.Item name="month" label="Month" rules={[{ required: true }]}>
-            <DatePicker picker="month" style={{ width: "100%" }} />
-          </Form.Item>
-
-          <Form.Item name="workGroupId" label="Team">
-            <Select
+              mode="multiple"
+              placeholder="Select one or more teams"
               options={filteredWorkGroups.map((g) => ({
                 label: g.name,
                 value: g.id,
@@ -286,11 +275,27 @@ export default function Rosters() {
             />
           </Form.Item>
 
-          <Form.Item name="shiftId" label="Shift">
+          <Form.Item name="month" label="Month" rules={[{ required: true, message: "Please select month" }]}>
+            <DatePicker picker="month" style={{ width: "100%" }} />
+          </Form.Item>
+
+          <Form.Item name="shiftId" label="Shift" rules={[{ required: true, message: "Please select shift" }]}>
             <Select
+              placeholder="Select shift"
               options={filteredShifts.map((s) => ({
                 label: `${s.name} ${s.startTime}→${s.endTime}`,
                 value: s.id,
+              }))}
+            />
+          </Form.Item>
+
+          <Form.Item name="employeeId" label="Employee">
+            <Select
+              placeholder="Select employee (optional)"
+              allowClear
+              options={employees.map((e) => ({
+                label: e.name,
+                value: e.id,
               }))}
             />
           </Form.Item>

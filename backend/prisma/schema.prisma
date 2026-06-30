@@ -265,14 +265,14 @@ model Roster {
 
   month String
 
-  employeeId  String
+  employeeId  String?
   workGroupId String
   shiftId     String
   companyId   String
 
   status String @default("ASSIGNED")
 
-  employee       Employee       @relation(fields: [employeeId], references: [id])
+  employee       Employee?      @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   workGroup      WorkGroup      @relation(fields: [workGroupId], references: [id], onDelete: Cascade)
   shift          ShiftTemplate  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
   company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -280,7 +280,7 @@ model Roster {
 
   createdAt DateTime @default(now())
 
-  @@unique([employeeId, month]) // 防止同月重复排班
+  @@unique([employeeId, month, workGroupId]) // 防止同月同团队重复排班
 }
 
 model Attendance {

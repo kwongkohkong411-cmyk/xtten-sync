@@ -20,7 +20,6 @@ import Companies from "../pages/Companies/Companies";
 import WorkGroups from "../pages/WorkGroups";
 import Attendance from "../pages/Attendance/Attendance";
 import ShiftTemplates from "../pages/ShiftTemplates";
-import ShiftManagement from "../pages/Shift/ShiftManagement";
 import Rosters from "../pages/Rosters";
 import Leaves from "../pages/Leaves";
 import Reports from "../pages/Reports/Reports";
@@ -144,12 +143,6 @@ const APP_SHELL_SECTIONS: AppSection[] = [
         label: "Shift Templates",
         required: "shift:view",
         element: <ShiftTemplates />,
-      },
-      {
-        path: "/shift/assignment",
-        label: "Teams Assignment",
-        required: "shift:view",
-        element: <ShiftManagement />,
       },
       {
         path: "/shift/rosters",

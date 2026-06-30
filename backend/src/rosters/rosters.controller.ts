@@ -13,8 +13,8 @@ import { RequirePermission } from '../auth/permissions.decorator';
 
 type RosterCreateBody = {
   companyId: string;
-  employeeId: string;
-  workGroupId: string;
+  employeeId?: string; // Optional - allow team-only rosters
+  workGroupIds: string[]; // Support multiple teams
   shiftId: string;
   month: string;
   status?: string;
@@ -22,8 +22,8 @@ type RosterCreateBody = {
 
 type RosterUpdateBody = {
   companyId?: string;
-  employeeId?: string;
-  workGroupId?: string;
+  employeeId?: string; // Optional - allow team-only rosters
+  workGroupIds?: string[]; // Support multiple teams
   shiftId?: string;
   month?: string;
   status?: string;
