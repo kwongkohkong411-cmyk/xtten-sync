@@ -33,10 +33,42 @@ export class WorkGroupsController {
     return this.workGroupsService.findAll();
   }
 
+  @RequirePermission('shift:view')
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.workGroupsService.findOne(id);
+  }
+
+  @RequirePermission('shift:view')
+  @Get(':id/available-employees')
+  getAvailableEmployees(@Param('id') id: string) {
+    return this.workGroupsService.findOne(id).then((wg) =>
+      this.workGroupsService.getCompanyEmployees(wg.companyId),
+    );
+  }
+
   @RequirePermission('shift:manage')
   @Post()
   create(@Body() body: WorkGroupCreateBody) {
     return this.workGroupsService.create(body);
+  }
+
+  @RequirePermission('shift:manage')
+  @Post(':id/members')
+  addMembers(
+    @Param('id') id: string,
+    @Body() body: { employeeIds: string[] },
+  ) {
+    return this.workGroupsService.addMembers(id, body.employeeIds ?? []);
+  }
+
+  @RequirePermission('shift:manage')
+  @Delete(':id/members/:employeeId')
+  removeMember(
+    @Param('id') id: string,
+    @Param('employeeId') employeeId: string,
+  ) {
+    return this.workGroupsService.removeMember(id, employeeId);
   }
 
   @RequirePermission('shift:manage')

@@ -14,3 +14,12 @@ export const updateWorkGroup = (id: string, data: any) =>
 
 export const deleteWorkGroup = (id: string) =>
   client.delete(`/work-groups/${id}`);
+
+export const getWorkGroupAvailableEmployees = (id: string) =>
+  client.get(`/work-groups/${id}/available-employees`);
+
+export const addWorkGroupMembers = (id: string, employeeIds: string[]) =>
+  client.post(`/work-groups/${id}/members`, { employeeIds });
+
+export const removeWorkGroupMember = (id: string, employeeId: string) =>
+  client.delete(`/work-groups/${id}/members/${employeeId}`);

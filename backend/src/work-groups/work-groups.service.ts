@@ -128,4 +128,46 @@ export class WorkGroupsService {
       where: { id },
     });
   }
+
+  async getCompanyEmployees(companyId: string) {
+    return this.prisma.employee.findMany({
+      where: { companyId },
+      select: {
+        id: true,
+        employeeNo: true,
+        name: true,
+        email: true,
+        position: true,
+        status: true,
+        workGroupId: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async addMembers(id: string, employeeIds: string[]) {
+    const workGroup = await this.findOne(id);
+    // Only allow employees from the same company
+    await this.prisma.employee.updateMany({
+      where: {
+        id: { in: employeeIds },
+        companyId: workGroup.companyId,
+      },
+      data: { workGroupId: id },
+    });
+    return this.findOne(id);
+  }
+
+  async removeMember(id: string, employeeId: string) {
+    const workGroup = await this.findOne(id);
+    await this.prisma.employee.updateMany({
+      where: {
+        id: employeeId,
+        companyId: workGroup.companyId,
+        workGroupId: id,
+      },
+      data: { workGroupId: null },
+    });
+    return this.findOne(id);
+  }
 }

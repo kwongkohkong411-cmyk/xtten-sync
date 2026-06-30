@@ -1,10 +1,14 @@
 import {
+  Avatar,
   Button,
   Card,
   ColorPicker,
+  Divider,
+  Drawer,
   Form,
   Input,
   InputNumber,
+  List,
   Modal,
   Popconfirm,
   Select,
@@ -12,6 +16,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
@@ -19,12 +24,19 @@ import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
+  TeamOutlined,
+  UserAddOutlined,
+  UserDeleteOutlined,
 } from "@ant-design/icons";
 import { useEffect, useMemo, useState } from "react";
 import {
+  addWorkGroupMembers,
   createWorkGroup,
   deleteWorkGroup,
+  getWorkGroup,
+  getWorkGroupAvailableEmployees,
   getWorkGroups,
+  removeWorkGroupMember,
   updateWorkGroup,
 } from "../../api/workGroups";
 import { getCompanies } from "../../api/company";
@@ -41,6 +53,14 @@ export default function WorkGroups() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [search, setSearch] = useState("");
+
+  // Members drawer state
+  const [membersDrawerOpen, setMembersDrawerOpen] = useState(false);
+  const [activeGroup, setActiveGroup] = useState<any | null>(null);
+  const [allEmployees, setAllEmployees] = useState<any[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [selectedToAdd, setSelectedToAdd] = useState<string[]>([]);
+  const [memberSearch, setMemberSearch] = useState("");
 
   const colorValue = Form.useWatch("color", form);
   const groupName = Form.useWatch("name", form);
@@ -148,6 +168,81 @@ export default function WorkGroups() {
     }
   };
 
+  // --- Members drawer ---
+  const openMembers = async (record: any) => {
+    setActiveGroup(record);
+    setSelectedToAdd([]);
+    setMemberSearch("");
+    setMembersDrawerOpen(true);
+    setMembersLoading(true);
+    try {
+      const [groupRes, empRes] = await Promise.all([
+        getWorkGroup(record.id),
+        getWorkGroupAvailableEmployees(record.id),
+      ]);
+      setActiveGroup(groupRes.data);
+      setAllEmployees(empRes.data);
+    } catch {
+      message.error("Failed to load members");
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  const refreshActiveGroup = async () => {
+    if (!activeGroup?.id) return;
+    setMembersLoading(true);
+    try {
+      const [groupRes, empRes] = await Promise.all([
+        getWorkGroup(activeGroup.id),
+        getWorkGroupAvailableEmployees(activeGroup.id),
+      ]);
+      setActiveGroup(groupRes.data);
+      setAllEmployees(empRes.data);
+      fetchData();
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  const handleAddMembers = async () => {
+    if (!selectedToAdd.length) return;
+    try {
+      await addWorkGroupMembers(activeGroup.id, selectedToAdd);
+      message.success(`Added ${selectedToAdd.length} member(s)`);
+      setSelectedToAdd([]);
+      await refreshActiveGroup();
+    } catch {
+      message.error("Failed to add members");
+    }
+  };
+
+  const handleRemoveMember = async (employeeId: string) => {
+    try {
+      await removeWorkGroupMember(activeGroup.id, employeeId);
+      message.success("Member removed");
+      await refreshActiveGroup();
+    } catch {
+      message.error("Failed to remove member");
+    }
+  };
+
+  const currentMemberIds = useMemo(
+    () => new Set((activeGroup?.employees ?? []).map((e: any) => e.id)),
+    [activeGroup]
+  );
+
+  const availableToAdd = useMemo(() => {
+    const kw = memberSearch.toLowerCase();
+    return allEmployees.filter(
+      (e) =>
+        !currentMemberIds.has(e.id) &&
+        (e.name?.toLowerCase().includes(kw) ||
+          e.employeeNo?.toLowerCase().includes(kw) ||
+          e.position?.toLowerCase().includes(kw))
+    );
+  }, [allEmployees, currentMemberIds, memberSearch]);
+
   const columns = [
     {
       title: "Team",
@@ -197,6 +292,15 @@ export default function WorkGroups() {
       key: "actions",
       render: (_: any, record: any) => (
         <Space>
+          <Tooltip title="Manage Members">
+            <Button
+              icon={<TeamOutlined />}
+              onClick={() => openMembers(record)}
+            >
+              Members
+            </Button>
+          </Tooltip>
+
           <Button icon={<EditOutlined />} onClick={() => openEdit(record)}>
             Edit
           </Button>
@@ -316,6 +420,105 @@ export default function WorkGroups() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* Members Drawer */}
+      <Drawer
+        title={
+          <Space>
+            <span
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                background: activeGroup?.color || "#1677ff",
+                display: "inline-block",
+              }}
+            />
+            {activeGroup?.name} — Manage Members
+          </Space>
+        }
+        open={membersDrawerOpen}
+        onClose={() => setMembersDrawerOpen(false)}
+        width={560}
+        loading={membersLoading}
+      >
+        {/* Current Members */}
+        <Text strong>
+          Current Members ({activeGroup?.employees?.length ?? 0})
+        </Text>
+        <List
+          size="small"
+          style={{ marginTop: 8, marginBottom: 16, maxHeight: 280, overflowY: "auto" }}
+          dataSource={activeGroup?.employees ?? []}
+          locale={{ emptyText: "No members yet" }}
+          renderItem={(emp: any) => (
+            <List.Item
+              actions={[
+                <Popconfirm
+                  key="remove"
+                  title="Remove from team?"
+                  okText="Remove"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => handleRemoveMember(emp.id)}
+                >
+                  <Button
+                    size="small"
+                    danger
+                    icon={<UserDeleteOutlined />}
+                  />
+                </Popconfirm>,
+              ]}
+            >
+              <List.Item.Meta
+                avatar={
+                  <Avatar size="small">
+                    {emp.name?.charAt(0)?.toUpperCase() ?? "?"}
+                  </Avatar>
+                }
+                title={emp.name}
+                description={
+                  <Space size={4}>
+                    {emp.employeeNo && <Text type="secondary" style={{ fontSize: 11 }}>{emp.employeeNo}</Text>}
+                    {emp.position && <Tag style={{ fontSize: 11 }}>{emp.position}</Tag>}
+                  </Space>
+                }
+              />
+            </List.Item>
+          )}
+        />
+
+        <Divider />
+
+        {/* Add Members */}
+        <Text strong>Add Members</Text>
+        <Input.Search
+          placeholder="Search by name, ID or position"
+          allowClear
+          style={{ marginTop: 8, marginBottom: 8 }}
+          onChange={(e) => setMemberSearch(e.target.value)}
+        />
+        <Select
+          mode="multiple"
+          style={{ width: "100%", marginBottom: 12 }}
+          placeholder="Select employees to add"
+          value={selectedToAdd}
+          onChange={setSelectedToAdd}
+          optionFilterProp="label"
+          options={availableToAdd.map((e) => ({
+            value: e.id,
+            label: `${e.name}${e.employeeNo ? ` (${e.employeeNo})` : ""}${e.position ? ` — ${e.position}` : ""}`,
+          }))}
+        />
+        <Button
+          type="primary"
+          icon={<UserAddOutlined />}
+          disabled={!selectedToAdd.length}
+          onClick={handleAddMembers}
+          block
+        >
+          Add Selected ({selectedToAdd.length})
+        </Button>
+      </Drawer>
     </Card>
   );
 }
