@@ -13,8 +13,7 @@ import {
 } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { createRole, deleteRole, getRoles, updateRole } from "../../api/roles";
-import { getPermissions } from "../../api/permissions";
-import PermissionTree from "./PermissionTree";
+import PermissionTree from "../../components/PermissionTree";
 import { getCurrentUser, isSuperAdminOwner } from "../../utils/auth";
 
 const SYSTEM_ROLE_NAMES = new Set([
@@ -29,7 +28,6 @@ const SYSTEM_ROLE_NAMES = new Set([
 
 export default function Roles() {
   const [roles, setRoles] = useState<any[]>([]);
-  const [permissions, setPermissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -60,18 +58,8 @@ export default function Roles() {
     }
   };
 
-  const loadPermissions = async () => {
-    try {
-      const res = await getPermissions();
-      setPermissions(res.data);
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Unable to load permissions');
-    }
-  };
-
   useEffect(() => {
     loadRoles();
-    loadPermissions();
   }, []);
 
   const openCreate = () => {
@@ -89,7 +77,9 @@ export default function Roles() {
     }
     setEditingRole(record);
     form.setFieldsValue(record);
-    setSelectedPermissionIds(record.permissions?.map((item: any) => item.permission.id) || []);
+    // Extract permission keys from the role's permissions
+    const permissionKeys = record.permissions?.map((item: any) => item.permission.key) || [];
+    setSelectedPermissionIds(permissionKeys);
     setModalOpen(true);
   };
 
@@ -238,9 +228,9 @@ export default function Roles() {
 
           <Form.Item label="Permissions">
             <PermissionTree
-              permissions={permissions}
-              selectedIds={selectedPermissionIds}
+              selectedPermissionIds={selectedPermissionIds}
               onChange={editingRole && isProtectedSystemRole(editingRole) ? undefined : setSelectedPermissionIds}
+              disabled={editingRole && isProtectedSystemRole(editingRole)}
             />
           </Form.Item>
 
