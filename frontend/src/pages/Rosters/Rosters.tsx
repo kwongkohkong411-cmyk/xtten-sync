@@ -161,8 +161,12 @@ export default function Rosters() {
 
       setModalOpen(false);
       fetchData();
-    } catch {
-      message.error("Please check the form");
+    } catch (error: any) {
+      // Extract error message from API response or use default
+      const errorMessage = error?.response?.data?.message || 
+                          error?.message || 
+                          "Please check the form";
+      message.error(errorMessage);
     }
   };
 
@@ -289,7 +293,44 @@ export default function Rosters() {
             />
           </Form.Item>
 
-          <Form.Item name="employeeId" label="Employee">
+          <Form.Item 
+            name="employeeId" 
+            label="Employee"
+            rules={[
+              {
+                validator: (_, value) => {
+                  // If no employee selected, it's team-level - always valid
+                  if (!value) return Promise.resolve();
+
+                  // Get form values
+                  const selectedTeamIds = form.getFieldValue("workGroupIds");
+                  if (!selectedTeamIds || selectedTeamIds.length === 0) {
+                    return Promise.resolve();
+                  }
+
+                  // Find the selected employee
+                  const selectedEmployee = employees.find(e => e.id === value);
+                  if (!selectedEmployee) {
+                    return Promise.reject(new Error("Employee not found"));
+                  }
+
+                  // Check if employee belongs to all selected teams
+                  // For now, we require employee to belong to at least one of the selected teams
+                  const employeeInTeams = selectedTeamIds.some(
+                    teamId => selectedEmployee.workGroupId === teamId
+                  );
+
+                  if (!employeeInTeams) {
+                    return Promise.reject(
+                      new Error("Employee does not belong to the selected Team")
+                    );
+                  }
+
+                  return Promise.resolve();
+                },
+              },
+            ]}
+          >
             <Select
               placeholder="Select employee (optional)"
               allowClear

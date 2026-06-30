@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 type RosterCreateInput = {
@@ -100,15 +105,63 @@ export class RostersService {
   // =========================
   async create(body: RosterCreateInput) {
     if (!body.companyId) {
-      throw new Error('companyId is missing');
+      throw new BadRequestException('companyId is missing');
     }
 
     if (!body.workGroupIds || body.workGroupIds.length === 0) {
-      throw new Error('workGroupIds is missing or empty');
+      throw new BadRequestException('workGroupIds is missing or empty');
     }
 
     if (!body.shiftId) {
-      throw new Error('shiftId is missing');
+      throw new BadRequestException('shiftId is missing');
+    }
+
+    // Validate employee belongs to all selected teams
+    if (body.employeeId) {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: body.employeeId },
+        select: { id: true, workGroupId: true, companyId: true },
+      });
+
+      if (!employee) {
+        throw new NotFoundException('Employee not found');
+      }
+
+      if (employee.companyId !== body.companyId) {
+        throw new BadRequestException(
+          'Employee does not belong to the selected Company'
+        );
+      }
+
+      // Check if employee belongs to all selected teams
+      // For now, we only allow assigning to teams where employee is a member
+      // or team-level rosters. An employee can have override in a team they belong to.
+      for (const workGroupId of body.workGroupIds) {
+        if (employee.workGroupId !== workGroupId) {
+          throw new BadRequestException(
+            'Employee does not belong to the selected Team'
+          );
+        }
+      }
+    }
+
+    // Check for duplicates: prevent creating multiple rosters with same company + team + month + shift
+    for (const workGroupId of body.workGroupIds) {
+      const existingRoster = await this.prisma.roster.findFirst({
+        where: {
+          companyId: body.companyId,
+          workGroupId,
+          month: body.month,
+          shiftId: body.shiftId,
+          employeeId: body.employeeId ?? null,
+        },
+      });
+
+      if (existingRoster) {
+        throw new ConflictException(
+          'Roster already exists for this team and month'
+        );
+      }
     }
 
     // Create a roster record for each workGroupId
