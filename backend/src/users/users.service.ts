@@ -357,9 +357,26 @@ export class UsersService extends BaseRbacService {
       }
     }
 
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    // Validate workGroupId belongs to the same company (tenant isolation)
+    const { workGroupId, ...userCreateData } = data;
+    if (workGroupId && data.companyId) {
+      const workGroup = await this.prisma.workGroup.findUnique({
+        where: { id: workGroupId },
+        select: { companyId: true },
+      });
+      if (!workGroup) {
+        throw new Error(`WorkGroup with id ${workGroupId} not found`);
+      }
+      if (workGroup.companyId !== data.companyId) {
+        throw new Error(
+          `WorkGroup ${workGroupId} does not belong to company ${data.companyId}`,
+        );
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(userCreateData.password, 10);
     const roleAssignment = await this.resolveRoleAssignment(
-      data.roleId,
+      userCreateData.roleId,
       actor,
       'EMPLOYEE',
     );
@@ -368,18 +385,29 @@ export class UsersService extends BaseRbacService {
       roleAssignment.roleName,
     );
     const resolvedEmail =
-      data.email?.trim() || this.buildFallbackEmail(normalizedUsername);
+      userCreateData.email?.trim() || this.buildFallbackEmail(normalizedUsername);
 
+    // Create User with optional Employee record if workGroupId is provided
     return this.prisma.user.create({
       data: {
         email: resolvedEmail,
         username: normalizedUsername,
         password: hashedPassword,
-        name: data.name,
+        name: userCreateData.name,
         role: roleAssignment.roleName,
         roleId: roleAssignment.roleId,
-        status: data.status || 'ACTIVE',
-        companyId: data.companyId || null,
+        status: userCreateData.status || 'ACTIVE',
+        companyId: userCreateData.companyId || null,
+        // Create associated Employee record if workGroupId is provided
+        ...(workGroupId && {
+          employee: {
+            create: {
+              name: userCreateData.name,
+              companyId: userCreateData.companyId || '',
+              workGroupId,
+            },
+          },
+        }),
       },
       include: {
         company: true,
@@ -389,6 +417,7 @@ export class UsersService extends BaseRbacService {
             name: true,
           },
         },
+        employee: true,
       },
     });
   }
@@ -404,11 +433,28 @@ export class UsersService extends BaseRbacService {
       data.companyId = companyId;
     }
 
+    // Validate workGroupId belongs to the same company (tenant isolation)
+    const { workGroupId, ...updateData } = data;
+    if (workGroupId && data.companyId) {
+      const workGroup = await this.prisma.workGroup.findUnique({
+        where: { id: workGroupId },
+        select: { companyId: true },
+      });
+      if (!workGroup) {
+        throw new Error(`WorkGroup with id ${workGroupId} not found`);
+      }
+      if (workGroup.companyId !== data.companyId) {
+        throw new Error(
+          `WorkGroup ${workGroupId} does not belong to company ${data.companyId}`,
+        );
+      }
+    }
+
     const current = await this.getUserIdentity(id);
 
     const normalizedUsername =
-      typeof data.username === 'string'
-        ? this.normalizeUsername(data.username)
+      typeof updateData.username === 'string'
+        ? this.normalizeUsername(updateData.username)
         : undefined;
 
     if (normalizedUsername) {
@@ -416,10 +462,10 @@ export class UsersService extends BaseRbacService {
     }
 
     const roleUpdate: RoleAssignment = Object.prototype.hasOwnProperty.call(
-      data,
+      updateData,
       'roleId',
     )
-      ? await this.resolveRoleAssignment(data.roleId, actor, 'EMPLOYEE')
+      ? await this.resolveRoleAssignment(updateData.roleId, actor, 'EMPLOYEE')
       : {
           roleId: current?.roleId || null,
           roleName: current?.role || 'EMPLOYEE',
@@ -440,10 +486,10 @@ export class UsersService extends BaseRbacService {
       currentUsername: current?.username,
       currentCompanyId: current?.companyId,
       nextRoleName: roleUpdate.roleName,
-      patch: data,
+      patch: updateData,
     });
 
-    const updateData: {
+    const dataToUpdate: {
       email?: string;
       username?: string;
       name?: string;
@@ -452,26 +498,42 @@ export class UsersService extends BaseRbacService {
       status?: string;
       companyId?: string | null;
       password?: string;
+      employee?: { upsert: any };
     } = {
-      email: data.email,
+      email: updateData.email,
       username: normalizedUsername,
-      name: data.name,
+      name: updateData.name,
       role: roleUpdate.roleName,
       roleId: roleUpdate.roleId,
-      status: data.status,
+      status: updateData.status,
     };
 
-    if (Object.prototype.hasOwnProperty.call(data, 'companyId')) {
-      updateData.companyId = data.companyId || null;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'companyId')) {
+      dataToUpdate.companyId = updateData.companyId || null;
     }
 
-    if (data.password) {
-      updateData.password = await bcrypt.hash(data.password, 10);
+    if (updateData.password) {
+      dataToUpdate.password = await bcrypt.hash(updateData.password, 10);
+    }
+
+    // Handle workGroupId - update or create Employee record if workGroupId is provided
+    if (workGroupId !== undefined) {
+      dataToUpdate.employee = {
+        upsert: {
+          create: {
+            companyId: data.companyId || '',
+            workGroupId,
+          },
+          update: {
+            workGroupId,
+          },
+        },
+      };
     }
 
     return this.prisma.user.update({
       where: { id },
-      data: updateData,
+      data: dataToUpdate,
       include: {
         company: true,
         roleRelation: {
@@ -480,6 +542,7 @@ export class UsersService extends BaseRbacService {
             name: true,
           },
         },
+        employee: true,
       },
     });
   }
